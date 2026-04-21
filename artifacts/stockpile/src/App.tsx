@@ -1,41 +1,205 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { dark } from '@clerk/themes';
+import { Switch, Route, useLocation, Router as WouterRouter } from 'wouter';
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+// Pages
 import NotFound from "@/pages/not-found";
+import Home from "@/pages/home";
+import Dashboard from "@/pages/dashboard";
+import Jobs from "@/pages/jobs";
+import NewJob from "@/pages/new-job";
+import JobDetail from "@/pages/job-detail";
+import { AppLayout } from "@/components/layout";
 
 const queryClient = new QueryClient();
 
-function Home() {
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
+
+if (!clerkPubKey) {
+  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
+}
+
+const clerkAppearance = {
+  theme: dark,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: "hsl(25 90% 55%)",
+    colorForeground: "hsl(40 10% 90%)",
+    colorMutedForeground: "hsl(220 10% 60%)",
+    colorDanger: "hsl(0 70% 50%)",
+    colorBackground: "hsl(220 15% 14%)",
+    colorInput: "hsl(220 15% 25%)",
+    colorInputForeground: "hsl(40 10% 90%)",
+    colorNeutral: "hsl(220 15% 22%)",
+    colorModalBackdrop: "rgba(0,0,0, 0.7)",
+    fontFamily: "var(--app-font-sans)",
+    borderRadius: "0.25rem",
+  },
+  elements: {
+    rootBox: "w-full",
+    cardBox: "bg-[#1f2229] rounded border border-[#2c313a] w-[440px] max-w-full overflow-hidden shadow-2xl",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-foreground font-mono uppercase font-bold",
+    headerSubtitle: "text-muted-foreground",
+    socialButtonsBlockButtonText: "text-foreground font-medium",
+    formFieldLabel: "text-muted-foreground font-mono uppercase text-xs",
+    footerActionLink: "text-primary hover:text-primary/80",
+    footerActionText: "text-muted-foreground",
+    dividerText: "text-muted-foreground text-xs uppercase font-mono",
+    identityPreviewEditButton: "text-primary hover:text-primary/80",
+    formFieldSuccessText: "text-green-500",
+    alertText: "text-destructive font-mono",
+    logoBox: "mb-6 flex justify-center",
+    logoImage: "h-12",
+    socialButtonsBlockButton: "border border-border bg-background hover:bg-secondary/50 rounded",
+    formButtonPrimary: "bg-primary text-primary-foreground hover:bg-primary/90 rounded font-mono uppercase",
+    formFieldInput: "bg-input border-border text-foreground rounded font-mono placeholder:text-muted-foreground/50",
+    footerAction: "bg-background",
+    dividerLine: "bg-border",
+    alert: "bg-destructive/20 border border-destructive/30 text-destructive rounded",
+    otpCodeFieldInput: "bg-input border-border text-foreground rounded font-mono",
+    formFieldRow: "mb-4",
+    main: "flex flex-col gap-4",
+  },
+};
+
+function SignInPage() {
+  // To update login providers, app branding, or OAuth settings use the Auth
+  // pane in the workspace toolbar. More information can be found in the Replit docs.
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Replit Agent is building...</h1>
-        <p className="mt-2 text-sm text-gray-600">Your app will appear here once it's ready.</p>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 relative">
+      <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
+      <div className="relative z-10">
+        <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
       </div>
     </div>
   );
 }
 
-function Router() {
+function SignUpPage() {
+  // To update login providers, app branding, or OAuth settings use the Auth
+  // pane in the workspace toolbar. More information can be found in the Replit docs.
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 relative">
+      <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
+      <div className="relative z-10">
+        <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      </div>
+    </div>
+  );
+}
+
+function HomeRedirect() {
+  const [, setLocation] = useLocation();
+  return (
+    <>
+      <Show when="signed-in">
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={() => {
+              useEffect(() => { setLocation('/dashboard'); }, []);
+              return null;
+            }} />
+            <Route path="/dashboard" component={Dashboard} />
+            <Route path="/jobs" component={Jobs} />
+            <Route path="/jobs/new" component={NewJob} />
+            <Route path="/jobs/:id" component={JobDetail} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Show>
+      <Show when="signed-out">
+        <Home />
+      </Show>
+    </>
+  );
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (
+        prevUserIdRef.current !== undefined &&
+        prevUserIdRef.current !== userId
+      ) {
+        queryClient.clear();
+      }
+      prevUserIdRef.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, queryClient]);
+
+  return null;
+}
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      localization={{
+        signIn: {
+          start: {
+            title: "Engineer Access",
+            subtitle: "Sign in to PileMetric",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create Account",
+            subtitle: "Join PileMetric",
+          },
+        },
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <TooltipProvider>
+          <Switch>
+            <Route path="/sign-in/*?" component={SignInPage} />
+            <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route path="/*" component={HomeRedirect} />
+          </Switch>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <WouterRouter base={basePath}>
+      <ClerkProviderWithRoutes />
+    </WouterRouter>
   );
 }
 

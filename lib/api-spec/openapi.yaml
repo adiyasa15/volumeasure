@@ -3,20 +3,20 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Stockpile volume measurement API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: jobs
+  - name: dashboard
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +24,315 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List user's stockpile measurement jobs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new stockpile measurement job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a job by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+  /jobs/{id}/refresh:
+    post:
+      operationId: refreshJob
+      tags: [jobs]
+      summary: Poll WebODM for the latest task status and update the job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Aggregate stats across all of the user's jobs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Recent job activity feed
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
+    MaterialType:
+      type: string
+      enum: [sand, soil, coal]
+    SourceType:
+      type: string
+      enum: [drone, smartphone, dslr]
+    PrecisionLevel:
+      type: string
+      enum: [low, medium, high]
+    JobStatus:
+      type: string
+      enum: [queued, running, completed, failed]
+    UploadedImage:
+      type: object
+      required: [name, sizeBytes, accepted]
+      properties:
+        name:
+          type: string
+        sizeBytes:
+          type: integer
+        accepted:
+          type: boolean
+        rejectionReason:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        sharpnessScore:
+          type: number
+          nullable: true
+    CreateJobBody:
+      type: object
+      required: [name, materialType, sourceType, images]
+      properties:
+        name:
+          type: string
+        materialType:
+          $ref: "#/components/schemas/MaterialType"
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        precisionLevel:
+          $ref: "#/components/schemas/PrecisionLevel"
+        notes:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/UploadedImage"
+    Job:
+      type: object
       required:
+        - id
+        - name
+        - materialType
+        - sourceType
+        - precisionLevel
         - status
-
+        - progress
+        - imageCount
+        - acceptedImageCount
+        - createdAt
+        - updatedAt
+        - images
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        materialType:
+          $ref: "#/components/schemas/MaterialType"
+        sourceType:
+          $ref: "#/components/schemas/SourceType"
+        precisionLevel:
+          $ref: "#/components/schemas/PrecisionLevel"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        progress:
+          type: integer
+          description: 0-100
+        webodmTaskId:
+          type: string
+          nullable: true
+        volumeM3:
+          type: number
+          nullable: true
+        areaSqm:
+          type: number
+          nullable: true
+        orthophotoUrl:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        imageCount:
+          type: integer
+        acceptedImageCount:
+          type: integer
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/UploadedImage"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MaterialBreakdown:
+      type: object
+      required: [materialType, jobCount, totalVolumeM3]
+      properties:
+        materialType:
+          $ref: "#/components/schemas/MaterialType"
+        jobCount:
+          type: integer
+        totalVolumeM3:
+          type: number
+    StatusBreakdown:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        count:
+          type: integer
+    DashboardSummary:
+      type: object
+      required:
+        - totalJobs
+        - totalVolumeM3
+        - completedJobs
+        - activeJobs
+        - byMaterial
+        - byStatus
+      properties:
+        totalJobs:
+          type: integer
+        totalVolumeM3:
+          type: number
+        completedJobs:
+          type: integer
+        activeJobs:
+          type: integer
+        averageVolumeM3:
+          type: number
+          nullable: true
+        byMaterial:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaterialBreakdown"
+        byStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusBreakdown"
+    ActivityItem:
+      type: object
+      required: [id, jobId, jobName, materialType, status, createdAt]
+      properties:
+        id:
+          type: string
+        jobId:
+          type: string
+        jobName:
+          type: string
+        materialType:
+          $ref: "#/components/schemas/MaterialType"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        volumeM3:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time

@@ -1,0 +1,57 @@
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  doublePrecision,
+  jsonb,
+  uuid,
+  index,
+} from "drizzle-orm/pg-core";
+
+export type StoredImage = {
+  name: string;
+  sizeBytes: number;
+  accepted: boolean;
+  rejectionReason?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  sharpnessScore?: number | null;
+};
+
+export const jobsTable = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    materialType: text("material_type").notNull(),
+    sourceType: text("source_type").notNull(),
+    precisionLevel: text("precision_level").notNull().default("high"),
+    status: text("status").notNull().default("queued"),
+    progress: integer("progress").notNull().default(0),
+    webodmTaskId: text("webodm_task_id"),
+    volumeM3: doublePrecision("volume_m3"),
+    areaSqm: doublePrecision("area_sqm"),
+    orthophotoUrl: text("orthophoto_url"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    notes: text("notes"),
+    imageCount: integer("image_count").notNull().default(0),
+    acceptedImageCount: integer("accepted_image_count").notNull().default(0),
+    images: jsonb("images").$type<StoredImage[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    userIdx: index("jobs_user_id_idx").on(table.userId),
+    createdAtIdx: index("jobs_created_at_idx").on(table.createdAt),
+  }),
+);
+
+export type JobRow = typeof jobsTable.$inferSelect;

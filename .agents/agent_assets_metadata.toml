@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "HSG07Zlq3nBzi0AybMtUk"
+uri = "file://artifacts/stockpile/public/hero-stockpile.png"
+type = "image"
+title = "Stockpile industrial aerial view"

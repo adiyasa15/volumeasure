@@ -4,6 +4,18 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## PileMetric (artifacts/stockpile)
+
+AI Stockpile Volume Measurement web app. Operators upload drone/DSLR imagery; the
+backend dispatches photogrammetry to WebODM Lightning (webodm.net) and reports
+volume (m³) and area. Industrial dark-mode dashboard with Clerk auth, Leaflet maps,
+and client-side EXIF GPS + sharpness pre-filtering (`exifr`).
+
+Backend (`artifacts/api-server`):
+- Clerk-authenticated REST under `/api` (jobs CRUD, refresh, dashboard summary, recent activity).
+- WebODM Lightning client uses `Authorization: JWT $WEBODM_LIGHTNING_TOKEN`; status codes 10/20/40 → queued/running/completed; 30/50 → failed. When token is missing, the refresh route falls back to a deterministic demo progression so the UI stays functional.
+- Drizzle schema: `lib/db/src/schema/jobs.ts` (`jobs` table keyed by Clerk userId).
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
