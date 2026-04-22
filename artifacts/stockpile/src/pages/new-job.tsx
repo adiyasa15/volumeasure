@@ -494,6 +494,24 @@ export default function NewJob() {
                           type="button"
                           variant="ghost"
                           size="icon"
+                          className="h-6 w-6 rounded-full hover:bg-primary/20 hover:text-primary"
+                          title="Download gcp_list.txt"
+                          onClick={() => {
+                            const blob = new Blob([gcpFile.content], { type: "text/plain" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = gcpFile.name;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                        >
+                          <Download className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
                           className="h-6 w-6 rounded-full hover:bg-destructive/20 hover:text-destructive"
                           onClick={() => {
                             setGcpFile(null);
