@@ -41,6 +41,19 @@ router.get("/summary", async (req: AuthedRequest, res) => {
     completedJobs > 0
       ? Math.round((totalVolumeM3 / completedJobs) * 100) / 100
       : null;
+  const totalImages = rows.reduce((sum, r) => sum + r.imageCount, 0);
+  const durationsRecorded = completed.filter(
+    (r) => r.processingDurationSeconds != null,
+  );
+  const averageProcessingDurationSeconds =
+    durationsRecorded.length > 0
+      ? Math.round(
+          durationsRecorded.reduce(
+            (s, r) => s + (r.processingDurationSeconds ?? 0),
+            0,
+          ) / durationsRecorded.length,
+        )
+      : null;
 
   const materials: ("sand" | "soil" | "coal")[] = ["sand", "soil", "coal"];
   const byMaterial = materials.map((m) => {
@@ -72,6 +85,8 @@ router.get("/summary", async (req: AuthedRequest, res) => {
     completedJobs,
     activeJobs,
     averageVolumeM3,
+    totalImages,
+    averageProcessingDurationSeconds,
     byMaterial,
     byStatus,
   });
@@ -93,6 +108,8 @@ router.get("/recent-activity", async (req: AuthedRequest, res) => {
       materialType: r.materialType as "sand" | "soil" | "coal",
       status: r.status as "queued" | "running" | "completed" | "failed",
       volumeM3: r.volumeM3 ?? null,
+      imageCount: r.imageCount,
+      processingDurationSeconds: r.processingDurationSeconds ?? null,
       createdAt: r.updatedAt.toISOString(),
     })),
   );

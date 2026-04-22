@@ -34,6 +34,12 @@ export const ListJobsResponseItem = zod.object({
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
   webodmGcpUrl: zod.string().nullish(),
+  totalFileSizeBytes: zod.number().nullish(),
+  captureLocation: zod.string().nullish(),
+  captureDate: zod.coerce.date().nullish(),
+  processingStartedAt: zod.coerce.date().nullish(),
+  processingDurationSeconds: zod.number().nullish(),
+  polygonCoordinates: zod.array(zod.array(zod.number())).nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(
@@ -81,6 +87,18 @@ export const CreateJobBody = zod.object({
       content: zod.string().describe("Plain-text contents of gcp_list.txt"),
     })
     .nullish(),
+  totalFileSizeBytes: zod
+    .number()
+    .nullish()
+    .describe("Sum of source image file sizes computed client-side."),
+  captureLocation: zod
+    .string()
+    .nullish()
+    .describe('Free-form location label (e.g. \"31.4N, 2.7E\")'),
+  captureDate: zod.coerce
+    .date()
+    .nullish()
+    .describe("Capture timestamp from EXIF or operator input."),
 });
 
 /**
@@ -107,6 +125,12 @@ export const GetJobResponse = zod.object({
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
   webodmGcpUrl: zod.string().nullish(),
+  totalFileSizeBytes: zod.number().nullish(),
+  captureLocation: zod.string().nullish(),
+  captureDate: zod.coerce.date().nullish(),
+  processingStartedAt: zod.coerce.date().nullish(),
+  processingDurationSeconds: zod.number().nullish(),
+  polygonCoordinates: zod.array(zod.array(zod.number())).nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(
@@ -156,6 +180,12 @@ export const RefreshJobResponse = zod.object({
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
   webodmGcpUrl: zod.string().nullish(),
+  totalFileSizeBytes: zod.number().nullish(),
+  captureLocation: zod.string().nullish(),
+  captureDate: zod.coerce.date().nullish(),
+  processingStartedAt: zod.coerce.date().nullish(),
+  processingDurationSeconds: zod.number().nullish(),
+  polygonCoordinates: zod.array(zod.array(zod.number())).nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(
@@ -183,6 +213,8 @@ export const GetDashboardSummaryResponse = zod.object({
   completedJobs: zod.number(),
   activeJobs: zod.number(),
   averageVolumeM3: zod.number().nullish(),
+  totalImages: zod.number(),
+  averageProcessingDurationSeconds: zod.number().nullish(),
   byMaterial: zod.array(
     zod.object({
       materialType: zod.enum(["sand", "soil", "coal"]),
@@ -208,6 +240,8 @@ export const GetRecentActivityResponseItem = zod.object({
   materialType: zod.enum(["sand", "soil", "coal"]),
   status: zod.enum(["queued", "running", "completed", "failed"]),
   volumeM3: zod.number().nullish(),
+  imageCount: zod.number(),
+  processingDurationSeconds: zod.number().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const GetRecentActivityResponse = zod.array(

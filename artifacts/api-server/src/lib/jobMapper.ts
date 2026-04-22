@@ -18,6 +18,14 @@ export function rowToJob(row: JobRow) {
     notes: row.notes ?? null,
     gcpEnabled: row.gcpEnabled === 1,
     webodmGcpUrl: row.webodmGcpUrl ?? null,
+    totalFileSizeBytes: row.totalFileSizeBytes ?? null,
+    captureLocation: row.captureLocation ?? null,
+    captureDate: row.captureDate ? row.captureDate.toISOString() : null,
+    processingStartedAt: row.processingStartedAt
+      ? row.processingStartedAt.toISOString()
+      : null,
+    processingDurationSeconds: row.processingDurationSeconds ?? null,
+    polygonCoordinates: (row.polygonCoordinates as number[][] | null) ?? null,
     imageCount: row.imageCount,
     acceptedImageCount: row.acceptedImageCount,
     images: (row.images ?? []) as StoredImage[],

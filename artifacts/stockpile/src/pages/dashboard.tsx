@@ -1,10 +1,18 @@
 import { useGetDashboardSummary, useGetRecentActivity } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mountain, Box, Pickaxe, CheckCircle2, Activity, Ruler, ArrowRight, Loader2, Plus } from "lucide-react";
+import { Mountain, Box, Pickaxe, CheckCircle2, Activity, Ruler, ArrowRight, Loader2, Plus, Image as ImageIcon, Timer } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+
+function formatDuration(seconds?: number | null): string {
+  if (seconds == null) return "—";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
 
 export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
@@ -79,6 +87,64 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Photos Processed</CardTitle>
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingSummary ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-3xl font-bold font-mono">{(summary?.totalImages ?? 0).toLocaleString()}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Avg Processing</CardTitle>
+            <Timer className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingSummary ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <div className="text-3xl font-bold font-mono">{formatDuration(summary?.averageProcessingDurationSeconds)}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Avg Volume</CardTitle>
+            <Ruler className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingSummary ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <div className="text-3xl font-bold font-mono">
+                {summary?.averageVolumeM3 != null ? summary.averageVolumeM3.toLocaleString() : "—"}
+                <span className="text-lg text-muted-foreground font-normal"> m³</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-card/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Material Types</CardTitle>
+            <Pickaxe className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoadingSummary ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-3xl font-bold font-mono">{summary?.byMaterial?.length ?? 0}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="lg:col-span-4 bg-card/50">
           <CardHeader>
@@ -148,10 +214,18 @@ export default function Dashboard() {
                         <p className="text-sm font-medium font-mono truncate max-w-[150px] sm:max-w-[200px]">
                           {activity.jobName}
                         </p>
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
+                        <div className="flex items-center text-xs text-muted-foreground gap-2 flex-wrap">
                           <span className="uppercase">{activity.materialType}</span>
                           <span>•</span>
                           <span>{format(new Date(activity.createdAt), 'MMM d, HH:mm')}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1"><ImageIcon className="h-3 w-3" />{activity.imageCount}</span>
+                          {activity.processingDurationSeconds != null && (
+                            <>
+                              <span>•</span>
+                              <span className="flex items-center gap-1"><Timer className="h-3 w-3" />{formatDuration(activity.processingDurationSeconds)}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">

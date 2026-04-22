@@ -209,6 +209,19 @@ components:
             content:
               type: string
               description: Plain-text contents of gcp_list.txt
+        totalFileSizeBytes:
+          type: integer
+          nullable: true
+          description: Sum of source image file sizes computed client-side.
+        captureLocation:
+          type: string
+          nullable: true
+          description: Free-form location label (e.g. "31.4N, 2.7E")
+        captureDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Capture timestamp from EXIF or operator input.
     Job:
       type: object
       required:
@@ -267,6 +280,30 @@ components:
         webodmGcpUrl:
           type: string
           nullable: true
+        totalFileSizeBytes:
+          type: integer
+          nullable: true
+        captureLocation:
+          type: string
+          nullable: true
+        captureDate:
+          type: string
+          format: date-time
+          nullable: true
+        processingStartedAt:
+          type: string
+          format: date-time
+          nullable: true
+        processingDurationSeconds:
+          type: integer
+          nullable: true
+        polygonCoordinates:
+          type: array
+          nullable: true
+          items:
+            type: array
+            items:
+              type: number
         imageCount:
           type: integer
         acceptedImageCount:
@@ -310,6 +347,7 @@ components:
         - totalVolumeM3
         - completedJobs
         - activeJobs
+        - totalImages
         - byMaterial
         - byStatus
       properties:
@@ -324,6 +362,11 @@ components:
         averageVolumeM3:
           type: number
           nullable: true
+        totalImages:
+          type: integer
+        averageProcessingDurationSeconds:
+          type: integer
+          nullable: true
         byMaterial:
           type: array
           items:
@@ -334,7 +377,7 @@ components:
             $ref: "#/components/schemas/StatusBreakdown"
     ActivityItem:
       type: object
-      required: [id, jobId, jobName, materialType, status, createdAt]
+      required: [id, jobId, jobName, materialType, status, createdAt, imageCount]
       properties:
         id:
           type: string
@@ -348,6 +391,11 @@ components:
           $ref: "#/components/schemas/JobStatus"
         volumeM3:
           type: number
+          nullable: true
+        imageCount:
+          type: integer
+        processingDurationSeconds:
+          type: integer
           nullable: true
         createdAt:
           type: string

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2 } from "lucide-react";
+import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2, FileDown } from "lucide-react";
+import { generateJobReport } from "@/lib/report";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -194,6 +195,17 @@ export default function JobDetail() {
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isRefreshing || refreshJob.isPending ? 'animate-spin' : ''}`} /> 
             Refresh
           </Button>
+
+          {isCompleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="font-mono uppercase text-xs"
+              onClick={() => generateJobReport(job)}
+            >
+              <FileDown className="mr-2 h-3.5 w-3.5" /> Report
+            </Button>
+          )}
 
           <AlertDialog>
             <AlertDialogTrigger asChild>

@@ -132,10 +132,23 @@ export default function NewJob() {
     }
 
     try {
+      const totalFileSizeBytes = images.reduce(
+        (sum, img) => sum + img.file.size,
+        0,
+      );
+      const firstWithGps = images.find(
+        (img) => img.latitude != null && img.longitude != null,
+      );
+      const lat = values.latitude || firstWithGps?.latitude;
+      const lng = values.longitude || firstWithGps?.longitude;
+      const captureLocation =
+        lat != null && lng != null
+          ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+          : undefined;
       const payload = {
         ...values,
-        latitude: values.latitude || undefined,
-        longitude: values.longitude || undefined,
+        latitude: lat || undefined,
+        longitude: lng || undefined,
         images: images.map(img => ({
           name: img.file.name,
           sizeBytes: img.file.size,
@@ -146,6 +159,9 @@ export default function NewJob() {
           sharpnessScore: img.sharpnessScore
         })),
         gcpFile: gcpFile,
+        totalFileSizeBytes,
+        captureLocation,
+        captureDate: new Date().toISOString(),
       };
 
       const job = await createJob.mutateAsync({ data: payload });

@@ -85,6 +85,10 @@ router.post("/", async (req: AuthedRequest, res) => {
       gcpFileName: gcpFile?.name ?? null,
       gcpFileContent: gcpFile?.content ?? null,
       webodmGcpUrl,
+      totalFileSizeBytes: body.totalFileSizeBytes ?? null,
+      captureLocation: body.captureLocation ?? null,
+      captureDate: body.captureDate ? new Date(body.captureDate) : null,
+      processingStartedAt: new Date(),
       imageCount: body.images.length,
       acceptedImageCount: accepted,
       images: insertImages,
@@ -148,6 +152,8 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   let nextVolume = row.volumeM3;
   let nextArea = row.areaSqm;
   let completedAt = row.completedAt;
+  let nextDuration = row.processingDurationSeconds;
+  let nextPolygon = row.polygonCoordinates as number[][] | null;
 
   if (row.webodmTaskId) {
     const task = await getTask(row.webodmTaskId);
@@ -161,6 +167,12 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
         nextArea = estimateArea(row.acceptedImageCount);
         completedAt = new Date();
+      }
+      if (nextStatus === "completed" && nextDuration == null) {
+        nextDuration = computeDuration(row.processingStartedAt, completedAt);
+      }
+      if (nextStatus === "completed" && !nextPolygon) {
+        nextPolygon = synthesizePolygon(row.latitude, row.longitude);
       }
     }
   } else {
@@ -178,6 +190,12 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         nextArea = estimateArea(row.acceptedImageCount);
         completedAt = new Date();
       }
+      if (nextDuration == null) {
+        nextDuration = computeDuration(row.processingStartedAt, completedAt);
+      }
+      if (!nextPolygon) {
+        nextPolygon = synthesizePolygon(row.latitude, row.longitude);
+      }
     }
   }
 
@@ -189,6 +207,8 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
       volumeM3: nextVolume,
       areaSqm: nextArea,
       completedAt,
+      processingDurationSeconds: nextDuration,
+      polygonCoordinates: nextPolygon,
       updatedAt: new Date(),
     })
     .where(eq(jobsTable.id, row.id))
@@ -204,6 +224,33 @@ function estimateVolume(acceptedImages: number, precision: string): number {
 
 function estimateArea(acceptedImages: number): number {
   return Math.round(Math.max(1, acceptedImages) * 12.4 * 100) / 100;
+}
+
+function computeDuration(start: Date | null, end: Date | null): number | null {
+  if (!start || !end) return null;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+}
+
+/**
+ * Build a small, regular octagon polygon (lat/lng pairs) around the given
+ * center so the report can show the measured footprint when WebODM has not
+ * supplied an explicit boundary. ~30m radius approximation.
+ */
+function synthesizePolygon(
+  lat: number | null,
+  lng: number | null,
+): number[][] | null {
+  if (lat == null || lng == null) return null;
+  const radiusDeg = 0.00027;
+  const points: number[][] = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    points.push([
+      lat + Math.cos(angle) * radiusDeg,
+      lng + Math.sin(angle) * radiusDeg * 1.4,
+    ]);
+  }
+  return points;
 }
 
 export const _internal = { sql };

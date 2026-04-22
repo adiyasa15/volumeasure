@@ -69,6 +69,12 @@ export interface CreateJobBody {
   longitude?: number | null;
   images: UploadedImage[];
   gcpFile?: CreateJobBodyGcpFile;
+  /** Sum of source image file sizes computed client-side. */
+  totalFileSizeBytes?: number | null;
+  /** Free-form location label (e.g. "31.4N, 2.7E") */
+  captureLocation?: string | null;
+  /** Capture timestamp from EXIF or operator input. */
+  captureDate?: string | null;
 }
 
 export interface Job {
@@ -89,6 +95,12 @@ export interface Job {
   notes?: string | null;
   gcpEnabled: boolean;
   webodmGcpUrl?: string | null;
+  totalFileSizeBytes?: number | null;
+  captureLocation?: string | null;
+  captureDate?: string | null;
+  processingStartedAt?: string | null;
+  processingDurationSeconds?: number | null;
+  polygonCoordinates?: number[][] | null;
   imageCount: number;
   acceptedImageCount: number;
   images: UploadedImage[];
@@ -114,6 +126,8 @@ export interface DashboardSummary {
   completedJobs: number;
   activeJobs: number;
   averageVolumeM3?: number | null;
+  totalImages: number;
+  averageProcessingDurationSeconds?: number | null;
   byMaterial: MaterialBreakdown[];
   byStatus: StatusBreakdown[];
 }
@@ -125,5 +139,7 @@ export interface ActivityItem {
   materialType: MaterialType;
   status: JobStatus;
   volumeM3?: number | null;
+  imageCount: number;
+  processingDurationSeconds?: number | null;
   createdAt: string;
 }
