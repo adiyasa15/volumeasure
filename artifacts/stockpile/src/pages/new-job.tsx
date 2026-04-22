@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Loader2, UploadCloud, X, Image as ImageIcon, MapPin, CheckCircle2, AlertCircle, HelpCircle, FileText, Download } from "lucide-react";
+import { Loader2, UploadCloud, X, Image as ImageIcon, MapPin, CheckCircle2, AlertCircle, HelpCircle, FileText, Download, Crosshair } from "lucide-react";
+import { GcpTagger } from "@/components/gcp-tagger";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { processImageFile, ImageProcessResult } from "@/lib/image-processing";
@@ -35,6 +36,7 @@ export default function NewJob() {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [gcpFile, setGcpFile] = useState<{ name: string; content: string } | null>(null);
+  const [gcpTaggerOpen, setGcpTaggerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gcpInputRef = useRef<HTMLInputElement>(null);
   
@@ -502,20 +504,33 @@ export default function NewJob() {
                         </Button>
                       </div>
                     ) : (
-                      <div
-                        className="border border-dashed border-border/50 rounded-md bg-background/30 p-3 text-center cursor-pointer hover:bg-secondary/20 transition-colors"
-                        onClick={() => gcpInputRef.current?.click()}
-                      >
-                        <input
-                          type="file"
-                          ref={gcpInputRef}
-                          className="hidden"
-                          accept=".txt,text/plain"
-                          onChange={handleGcpSelect}
-                        />
-                        <p className="text-xs font-mono uppercase text-muted-foreground">
-                          Upload gcp_list.txt
-                        </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div
+                          className="border border-dashed border-border/50 rounded-md bg-background/30 p-3 text-center cursor-pointer hover:bg-secondary/20 transition-colors"
+                          onClick={() => gcpInputRef.current?.click()}
+                        >
+                          <input
+                            type="file"
+                            ref={gcpInputRef}
+                            className="hidden"
+                            accept=".txt,text/plain"
+                            onChange={handleGcpSelect}
+                          />
+                          <p className="text-xs font-mono uppercase text-muted-foreground">
+                            Upload gcp_list.txt
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={images.length === 0}
+                          className="border border-dashed border-primary/40 rounded-md bg-primary/5 p-3 text-center cursor-pointer hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          onClick={() => setGcpTaggerOpen(true)}
+                        >
+                          <Crosshair className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-mono uppercase text-primary">
+                            Tag GCPs in Image
+                          </span>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -537,6 +552,22 @@ export default function NewJob() {
           </div>
         </form>
       </Form>
+
+      <GcpTagger
+        open={gcpTaggerOpen}
+        onOpenChange={setGcpTaggerOpen}
+        images={images
+          .filter((img) => img.accepted)
+          .map((img) => ({ name: img.file.name, file: img.file }))}
+        onExport={(filename, content) => {
+          setGcpFile({ name: filename, content });
+          toast({
+            title: "GCP list ready",
+            description:
+              "Tagged points exported. They will be uploaded with your job.",
+          });
+        }}
+      />
     </div>
   );
 }
