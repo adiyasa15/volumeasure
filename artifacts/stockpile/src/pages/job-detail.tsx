@@ -132,39 +132,6 @@ export default function JobDetail() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {job.gcpEnabled && (
-        <Card className="bg-primary/10 border-primary/40">
-          <CardHeader>
-            <CardTitle className="font-mono uppercase text-sm">
-              GCP Tagging Required
-            </CardTitle>
-            <CardDescription>
-              Task submitted. Please click the link below to tag your markers
-              before processing continues.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {job.webodmGcpUrl && (
-              <a
-                href={job.webodmGcpUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground font-mono uppercase text-xs hover:bg-primary/90"
-              >
-                Open WebODM GCP Editor
-              </a>
-            )}
-            <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside font-mono">
-              <li>Open Task: click the link above to open the WebODM GCP Editor.</li>
-              <li>Select Point: select <span className="text-foreground">mark_start</span> from the list on the left.</li>
-              <li>Find Photo: click a photo where the 0 cm end of the ruler is clear.</li>
-              <li>Tag: click the exact pixel of the 0 cm mark.</li>
-              <li>Repeat for <span className="text-foreground">mark_end</span> (the 100 cm mark).</li>
-              <li>Save &amp; Process: click Submit/Save in WebODM. The engine will restart and calculate volume against the 1 m scale.</li>
-            </ol>
-          </CardContent>
-        </Card>
-      )}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => setLocation("/jobs")} className="shrink-0 rounded-full">
