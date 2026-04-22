@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Loader2, UploadCloud, X, Image as ImageIcon, MapPin, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, UploadCloud, X, Image as ImageIcon, MapPin, CheckCircle2, AlertCircle, HelpCircle, FileText, Download } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { processImageFile, ImageProcessResult } from "@/lib/image-processing";
 import { Progress } from "@/components/ui/progress";
@@ -33,7 +34,9 @@ export default function NewJob() {
   const [images, setImages] = useState<ImageProcessResult[]>([]);
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [gcpFile, setGcpFile] = useState<{ name: string; content: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const gcpInputRef = useRef<HTMLInputElement>(null);
   
   const createJob = useCreateJob();
 
@@ -88,6 +91,36 @@ export default function NewJob() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleGcpSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+      toast({
+        title: "Invalid file",
+        description: "GCP file must be a .txt file (e.g. gcp_list.txt).",
+        variant: "destructive",
+      });
+      if (gcpInputRef.current) gcpInputRef.current.value = "";
+      return;
+    }
+    const content = await file.text();
+    setGcpFile({ name: file.name, content });
+  };
+
+  const downloadSampleGcp = () => {
+    const sample =
+      'WGS84 UTM 31N\n' +
+      '0 0 0 0 0 "mark_start"\n' +
+      '1 0 0 0 0 "mark_end"\n';
+    const blob = new Blob([sample], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "gcp_list.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const onSubmit = async (values: FormValues) => {
     if (images.length === 0) {
       toast({
@@ -111,16 +144,19 @@ export default function NewJob() {
           latitude: img.latitude,
           longitude: img.longitude,
           sharpnessScore: img.sharpnessScore
-        }))
+        })),
+        gcpFile: gcpFile,
       };
 
       const job = await createJob.mutateAsync({ data: payload });
-      
+
       toast({
-        title: "Job Created",
-        description: "Your measurement job has been queued for processing.",
+        title: gcpFile ? "Task submitted" : "Job Created",
+        description: gcpFile
+          ? "Please click the link on the job page to tag your markers before processing continues."
+          : "Your measurement job has been queued for processing.",
       });
-      
+
       setLocation(`/jobs/${job.id}`);
     } catch (error) {
       toast({
@@ -389,10 +425,88 @@ export default function NewJob() {
                     </div>
                   )}
                 </CardContent>
-                <CardFooter className="pt-4 border-t border-border/50">
-                  <Button 
-                    type="submit" 
-                    className="w-full font-mono uppercase" 
+                <CardFooter className="flex-col gap-4 items-stretch pt-4 border-t border-border/50">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono uppercase text-xs text-muted-foreground">
+                          Accuracy Settings (Optional)
+                        </span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground"
+                                aria-label="GCP help"
+                              >
+                                <HelpCircle className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-xs">
+                                Use this if you don&apos;t have GPS or need high accuracy.
+                                Upload your gcp_list.txt here and we will use it to scale your 2m pile.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs font-mono"
+                        onClick={downloadSampleGcp}
+                      >
+                        <Download className="h-3 w-3 mr-1" /> Sample
+                      </Button>
+                    </div>
+
+                    {gcpFile ? (
+                      <div className="flex items-center gap-2 p-2 rounded bg-background/50 border border-border/50">
+                        <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+                        <div className="flex-1 truncate">
+                          <p className="font-mono text-xs truncate">{gcpFile.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            GCP file ready - dmanual-gcp will be enabled
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-full hover:bg-destructive/20 hover:text-destructive"
+                          onClick={() => {
+                            setGcpFile(null);
+                            if (gcpInputRef.current) gcpInputRef.current.value = "";
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        className="border border-dashed border-border/50 rounded-md bg-background/30 p-3 text-center cursor-pointer hover:bg-secondary/20 transition-colors"
+                        onClick={() => gcpInputRef.current?.click()}
+                      >
+                        <input
+                          type="file"
+                          ref={gcpInputRef}
+                          className="hidden"
+                          accept=".txt,text/plain"
+                          onChange={handleGcpSelect}
+                        />
+                        <p className="text-xs font-mono uppercase text-muted-foreground">
+                          Upload gcp_list.txt
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full font-mono uppercase"
                     disabled={isProcessingFiles || images.length === 0 || createJob.isPending}
                   >
                     {createJob.isPending ? (

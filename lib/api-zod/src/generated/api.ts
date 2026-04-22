@@ -32,6 +32,8 @@ export const ListJobsResponseItem = zod.object({
   latitude: zod.number().nullish(),
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
+  gcpEnabled: zod.boolean(),
+  webodmGcpUrl: zod.string().nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(
@@ -73,6 +75,12 @@ export const CreateJobBody = zod.object({
       sharpnessScore: zod.number().nullish(),
     }),
   ),
+  gcpFile: zod
+    .object({
+      name: zod.string(),
+      content: zod.string().describe("Plain-text contents of gcp_list.txt"),
+    })
+    .nullish(),
 });
 
 /**
@@ -97,6 +105,8 @@ export const GetJobResponse = zod.object({
   latitude: zod.number().nullish(),
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
+  gcpEnabled: zod.boolean(),
+  webodmGcpUrl: zod.string().nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(
@@ -144,6 +154,8 @@ export const RefreshJobResponse = zod.object({
   latitude: zod.number().nullish(),
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
+  gcpEnabled: zod.boolean(),
+  webodmGcpUrl: zod.string().nullish(),
   imageCount: zod.number(),
   acceptedImageCount: zod.number(),
   images: zod.array(

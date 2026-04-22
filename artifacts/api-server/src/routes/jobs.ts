@@ -48,7 +48,14 @@ router.post("/", async (req: AuthedRequest, res) => {
   const body = parsed.data;
   const accepted = body.images.filter((i) => i.accepted).length;
 
-  const init = await createTaskInit(body.name);
+  const gcpFile = body.gcpFile ?? null;
+  const init = await createTaskInit(body.name, {
+    gcpFile: gcpFile ? { name: gcpFile.name, content: gcpFile.content } : null,
+  });
+  const webodmGcpUrl =
+    gcpFile && init?.uuid
+      ? `https://webodm.net/task/${init.uuid}/gcp/`
+      : null;
 
   const insertImages: StoredImage[] = body.images.map((i) => ({
     name: i.name,
@@ -74,6 +81,10 @@ router.post("/", async (req: AuthedRequest, res) => {
       latitude: body.latitude ?? null,
       longitude: body.longitude ?? null,
       notes: body.notes ?? null,
+      gcpEnabled: gcpFile ? 1 : 0,
+      gcpFileName: gcpFile?.name ?? null,
+      gcpFileContent: gcpFile?.content ?? null,
+      webodmGcpUrl,
       imageCount: body.images.length,
       acceptedImageCount: accepted,
       images: insertImages,

@@ -46,19 +46,27 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
  */
 export async function createTaskInit(
   name: string,
+  opts: { gcpFile?: { name: string; content: string } | null } = {},
 ): Promise<{ uuid: string } | null> {
   if (!token()) return null;
   try {
-    const options = [
+    const options: Array<{ name: string; value: unknown }> = [
       { name: "auto-boundary", value: true },
       { name: "dsm", value: true },
       { name: "orthophoto-resolution", value: 5 },
       { name: "feature-quality", value: "high" },
     ];
+    if (opts.gcpFile) {
+      options.push({ name: "dmanual-gcp", value: true });
+    }
     const fd = new FormData();
     fd.append("name", name);
     fd.append("options", JSON.stringify(options));
     fd.append("partial", "true");
+    if (opts.gcpFile) {
+      const blob = new Blob([opts.gcpFile.content], { type: "text/plain" });
+      fd.append("gcp", blob, opts.gcpFile.name || "gcp_list.txt");
+    }
     const res = await call("/api/projects/init/task/", {
       method: "POST",
       body: fd,

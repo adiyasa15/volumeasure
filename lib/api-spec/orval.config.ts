@@ -25,7 +25,7 @@ export default defineConfig({
       workspace: apiClientReactSrc,
       target: "generated",
       client: "react-query",
-      mode: "split",
+      mode: "tags-split",
       baseUrl: "/api",
       clean: true,
       prettier: true,
@@ -54,6 +54,7 @@ export default defineConfig({
       mode: "split",
       clean: true,
       prettier: true,
+      indexFiles: false,
       override: {
         zod: {
           coerce: {

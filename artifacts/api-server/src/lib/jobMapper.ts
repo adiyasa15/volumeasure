@@ -16,6 +16,8 @@ export function rowToJob(row: JobRow) {
     latitude: row.latitude ?? null,
     longitude: row.longitude ?? null,
     notes: row.notes ?? null,
+    gcpEnabled: row.gcpEnabled === 1,
+    webodmGcpUrl: row.webodmGcpUrl ?? null,
     imageCount: row.imageCount,
     acceptedImageCount: row.acceptedImageCount,
     images: (row.images ?? []) as StoredImage[],

@@ -53,6 +53,12 @@ export interface UploadedImage {
   sharpnessScore?: number | null;
 }
 
+export type CreateJobBodyGcpFile = {
+  name: string;
+  /** Plain-text contents of gcp_list.txt */
+  content: string;
+} | null;
+
 export interface CreateJobBody {
   name: string;
   materialType: MaterialType;
@@ -62,6 +68,7 @@ export interface CreateJobBody {
   latitude?: number | null;
   longitude?: number | null;
   images: UploadedImage[];
+  gcpFile?: CreateJobBodyGcpFile;
 }
 
 export interface Job {
@@ -80,6 +87,8 @@ export interface Job {
   latitude?: number | null;
   longitude?: number | null;
   notes?: string | null;
+  gcpEnabled: boolean;
+  webodmGcpUrl?: string | null;
   imageCount: number;
   acceptedImageCount: number;
   images: UploadedImage[];
