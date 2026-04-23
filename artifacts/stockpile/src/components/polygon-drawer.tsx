@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,11 +8,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { MapContainer, TileLayer, Polygon, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
-import { Trash2, Undo2, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  Trash2,
+  Undo2,
+  CheckCircle2,
+  Loader2,
+  Mountain,
+  Ruler,
+  Layers,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from "lucide-react";
 import parseGeoraster from "georaster";
 import GeoRasterLayer from "georaster-layer-for-leaflet";
+
+// Make Leaflet available globally so georaster-layer-for-leaflet can find it
+(window as any).L = L;
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -26,11 +41,17 @@ L.Icon.Default.mergeOptions({
 
 type LatLng = [number, number];
 
-type ClickCaptureProps = {
-  onMapClick: (latlng: LatLng) => void;
+export type DrawerVolumeResult = {
+  volumeM3: number;
+  cutVolumeM3: number | null;
+  fillVolumeM3: number | null;
+  areaSqm: number;
+  method: "dsm" | "geometric";
 };
 
-function ClickCapture({ onMapClick }: ClickCaptureProps) {
+// ── Click capture ─────────────────────────────────────────────────────────────
+
+function ClickCapture({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
   useMapEvents({
     click(e) {
       onMapClick([e.latlng.lat, e.latlng.lng]);
@@ -39,11 +60,9 @@ function ClickCapture({ onMapClick }: ClickCaptureProps) {
   return null;
 }
 
-type DotMarkerProps = {
-  positions: LatLng[];
-};
+// ── Dot markers ───────────────────────────────────────────────────────────────
 
-function DotMarkers({ positions }: DotMarkerProps) {
+function DotMarkers({ positions }: { positions: LatLng[] }) {
   const markersRef = useRef<L.CircleMarker[]>([]);
   const map = useMapEvents({});
 
@@ -68,10 +87,8 @@ function DotMarkers({ positions }: DotMarkerProps) {
   return null;
 }
 
-/**
- * Fixes Leaflet sizing inside the dialog and flies to GPS-based approximate
- * bounds when the real orthophoto overlay hasn't loaded yet.
- */
+// ── Map fit on open ───────────────────────────────────────────────────────────
+
 function FitOnOpen({
   jobId,
   open,
@@ -89,7 +106,6 @@ function FitOnOpen({
       map.invalidateSize();
       if (tilesReady) return; // OrthophotoLayer will fly to real bounds
 
-      // GPS-based fallback via tilejson
       try {
         const res = await fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" });
         if (!res.ok) return;
@@ -114,32 +130,45 @@ function FitOnOpen({
   return null;
 }
 
-/**
- * Fetches the orthophoto GeoTIFF from our server proxy, parses it with
- * georaster, and renders it as a Leaflet layer. Automatically flies the map
- * to the orthophoto's geographic extent on load.
- */
+// ── Orthophoto overlay layer ──────────────────────────────────────────────────
+
 function OrthophotoLayer({
   jobId,
+  opacity,
   onLoadChange,
+  onError,
 }: {
   jobId: string;
+  opacity: number; // 0–100
   onLoadChange?: (loading: boolean) => void;
+  onError?: () => void;
 }) {
   const map = useMap();
+  const layerRef = useRef<any>(null);
+
+  // Dynamically update CSS opacity when slider changes (no re-fetch)
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    // GeoRasterLayer renders into a canvas pane container
+    const container: HTMLElement | undefined =
+      layer._container ?? layer._levels?.[Object.keys(layer._levels)[0]]?.el;
+    if (container) {
+      container.style.opacity = String(opacity / 100);
+    }
+  }, [opacity]);
 
   useEffect(() => {
-    let layer: InstanceType<typeof GeoRasterLayer> | null = null;
     let cancelled = false;
-
     onLoadChange?.(true);
 
     (async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}/orthophoto`, {
-          credentials: "include",
-        });
-        if (!res.ok || cancelled) return;
+        const res = await fetch(`/api/jobs/${jobId}/orthophoto`, { credentials: "include" });
+        if (!res.ok || cancelled) {
+          onError?.();
+          return;
+        }
 
         const arrayBuffer = await res.arrayBuffer();
         if (cancelled) return;
@@ -147,24 +176,27 @@ function OrthophotoLayer({
         const georaster = await parseGeoraster(arrayBuffer);
         if (cancelled) return;
 
-        layer = new GeoRasterLayer({
+        const layer = new GeoRasterLayer({
           georaster,
-          opacity: 0.85,
+          opacity: opacity / 100,
           resolution: 256,
-        }) as InstanceType<typeof GeoRasterLayer>;
+        });
 
+        layerRef.current = layer;
         layer.addTo(map);
 
-        // Fly to the orthophoto's actual geographic extent
         const { xmin, ymin, xmax, ymax } = georaster;
         if (xmin != null && ymin != null && xmax != null && ymax != null) {
-          map.flyToBounds(
-            [[ymin, xmin], [ymax, xmax]],
-            { padding: [32, 32], maxZoom: 22, animate: true, duration: 1.0 },
-          );
+          map.flyToBounds([[ymin, xmin], [ymax, xmax]], {
+            padding: [32, 32],
+            maxZoom: 22,
+            animate: true,
+            duration: 1.0,
+          });
         }
       } catch (err) {
         console.error("[OrthophotoLayer] Failed to load orthophoto:", err);
+        onError?.();
       } finally {
         if (!cancelled) onLoadChange?.(false);
       }
@@ -172,8 +204,10 @@ function OrthophotoLayer({
 
     return () => {
       cancelled = true;
+      const layer = layerRef.current;
       if (layer) {
         try { map.removeLayer(layer); } catch { /**/ }
+        layerRef.current = null;
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,14 +216,19 @@ function OrthophotoLayer({
   return null;
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   jobId: string;
   center: [number, number] | null;
   tilesReady?: boolean;
-  onMeasure: (coords: number[][]) => void;
+  /** Called with the full updated job after volume is saved. */
+  onComplete?: (result: DrawerVolumeResult) => void;
   isSaving?: boolean;
+  /** Legacy: called with raw coords. Use onComplete for full result. */
+  onMeasure?: (coords: number[][]) => void;
 };
 
 export function PolygonDrawer({
@@ -198,49 +237,104 @@ export function PolygonDrawer({
   jobId,
   center,
   tilesReady = false,
+  onComplete,
   onMeasure,
-  isSaving,
+  isSaving: externalSaving = false,
 }: Props) {
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [orthophotoLoading, setOrthophotoLoading] = useState(false);
+  const [orthophotoError, setOrthophotoError] = useState(false);
+  const [opacity, setOpacity] = useState(80);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [result, setResult] = useState<DrawerVolumeResult | null>(null);
+
   const defaultCenter: LatLng = center ?? [0, 0];
+  const isSaving = externalSaving || isCalculating;
+
+  // Reset when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setVertices([]);
+      setResult(null);
+      setOrthophotoError(false);
+      setOrthophotoLoading(false);
+    }
+  }, [open]);
 
   const handleClick = (latlng: LatLng) => {
+    if (result) return; // lock map after result shown
     setVertices((prev) => [...prev, latlng]);
   };
 
   const undo = () => setVertices((prev) => prev.slice(0, -1));
-  const reset = () => setVertices([]);
+  const reset = () => { setVertices([]); setResult(null); };
 
-  const handleMeasure = () => {
+  const handleMeasure = useCallback(async () => {
     if (vertices.length < 3) return;
-    onMeasure(vertices.map((v) => [v[0], v[1]]));
-  };
+    const coords = vertices.map((v) => [v[0], v[1]]);
+
+    // If parent uses legacy onMeasure, delegate to it
+    if (onMeasure && !onComplete) {
+      onMeasure(coords);
+      return;
+    }
+
+    setIsCalculating(true);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/polygon`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ polygonCoordinates: coords }),
+      });
+      if (!res.ok) throw new Error("API error");
+      const updated = await res.json() as {
+        volumeM3?: number | null;
+        cutVolumeM3?: number | null;
+        fillVolumeM3?: number | null;
+        areaSqm?: number | null;
+      };
+      const drawerResult: DrawerVolumeResult = {
+        volumeM3:     updated.volumeM3 ?? 0,
+        cutVolumeM3:  updated.cutVolumeM3 ?? null,
+        fillVolumeM3: updated.fillVolumeM3 ?? null,
+        areaSqm:      updated.areaSqm ?? 0,
+        method:       updated.cutVolumeM3 != null ? "dsm" : "geometric",
+      };
+      setResult(drawerResult);
+      onComplete?.(drawerResult);
+    } catch {
+      // surface error to user
+      console.error("Volume calculation failed");
+    } finally {
+      setIsCalculating(false);
+    }
+  }, [vertices, jobId, onMeasure, onComplete]);
 
   const polyPositions: LatLng[] = vertices.length >= 2 ? [...vertices, vertices[0]] : vertices;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="font-mono uppercase">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3">
+          <DialogTitle className="font-mono uppercase tracking-wider">
             Draw Measurement Polygon
           </DialogTitle>
-          <DialogDescription>
-            Click on the map to place vertices around your stockpile. Place at
-            least 3 points to close the polygon, then click Measure Volume.
-            {tilesReady && " The orthophoto from your drone flight is overlaid on the map."}
+          <DialogDescription className="text-xs">
+            Click on the map to place vertices around your stockpile. Place at least 3 points,
+            then click Calculate Volume.
+            {tilesReady && !orthophotoError && " Your drone orthophoto is overlaid below."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* ── Toolbar ─────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 flex-wrap px-6 py-2 border-b border-border/40 bg-card/30">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="font-mono uppercase text-xs"
-            disabled={vertices.length === 0}
+            className="font-mono uppercase text-xs h-7"
+            disabled={vertices.length === 0 || isSaving || !!result}
             onClick={undo}
           >
             <Undo2 className="h-3.5 w-3.5 mr-1.5" /> Undo
@@ -249,74 +343,92 @@ export function PolygonDrawer({
             type="button"
             variant="outline"
             size="sm"
-            className="font-mono uppercase text-xs hover:bg-destructive/20 hover:text-destructive"
-            disabled={vertices.length === 0}
+            className="font-mono uppercase text-xs h-7 hover:bg-destructive/20 hover:text-destructive"
+            disabled={vertices.length === 0 || isSaving}
             onClick={reset}
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear Polygon
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear
           </Button>
 
-          {tilesReady && orthophotoLoading && (
-            <span className="flex items-center gap-1.5 text-[11px] font-mono text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Loading orthophoto…
-            </span>
-          )}
-          {tilesReady && !orthophotoLoading && (
-            <span className="text-[11px] font-mono text-emerald-400">
-              Orthophoto overlay active
-            </span>
+          {/* Opacity control — only when orthophoto is available */}
+          {tilesReady && !orthophotoError && (
+            <div className="flex items-center gap-2 ml-2 border-l border-border/40 pl-3">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+                Overlay {opacity}%
+              </span>
+              <Slider
+                min={0}
+                max={100}
+                step={5}
+                value={[opacity]}
+                onValueChange={([v]) => setOpacity(v)}
+                className="w-24"
+              />
+              {orthophotoLoading && (
+                <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />
+              )}
+            </div>
           )}
 
           <div className="flex-1" />
+
+          {/* Vertex hint */}
           <span className="text-[11px] font-mono text-muted-foreground">
-            {vertices.length === 0 && "Click the map to start drawing"}
-            {vertices.length > 0 && vertices.length < 3 &&
-              `${3 - vertices.length} more point${3 - vertices.length > 1 ? "s" : ""} needed`}
-            {vertices.length >= 3 && (
-              <span className="text-primary">Polygon ready</span>
+            {result ? (
+              <span className="text-emerald-400">Volume calculated</span>
+            ) : vertices.length === 0 ? (
+              "Click the map to start drawing"
+            ) : vertices.length < 3 ? (
+              `${3 - vertices.length} more point${3 - vertices.length > 1 ? "s" : ""} needed`
+            ) : (
+              <span className="text-primary">{vertices.length} vertices — ready</span>
             )}
           </span>
+
           <Button
             type="button"
             size="sm"
-            className="font-mono uppercase text-xs"
-            disabled={vertices.length < 3 || isSaving}
+            className="font-mono uppercase text-xs h-7"
+            disabled={vertices.length < 3 || isSaving || !!result}
             onClick={handleMeasure}
           >
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-            {isSaving ? "Calculating..." : `Measure Volume (${vertices.length} pts)`}
+            {isSaving ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Calculating…</>
+            ) : (
+              <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Calculate Volume</>
+            )}
           </Button>
         </div>
 
-        <div className="relative flex-1 min-h-[400px] rounded overflow-hidden border border-border/50">
+        {/* ── Map ─────────────────────────────────────────────────────── */}
+        <div className="relative flex-1 min-h-0" style={{ height: "400px" }}>
           {center ? (
             <MapContainer
               center={defaultCenter}
               zoom={18}
               maxZoom={23}
               scrollWheelZoom
-              style={{ height: "100%", width: "100%", zIndex: 1 }}
-              className="absolute inset-0"
+              style={{ height: "100%", width: "100%" }}
             >
-              {/* Esri satellite basemap — always shown as base */}
               <TileLayer
-                attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
+                attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar'
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                 maxNativeZoom={19}
                 maxZoom={23}
               />
 
-              {/* Orthophoto overlay — GeoRaster renders the real NodeODM GeoTIFF */}
-              {tilesReady && open && (
+              {tilesReady && open && !orthophotoError && (
                 <OrthophotoLayer
                   jobId={jobId}
+                  opacity={opacity}
                   onLoadChange={setOrthophotoLoading}
+                  onError={() => setOrthophotoError(true)}
                 />
               )}
 
-              <FitOnOpen jobId={jobId} open={open} tilesReady={tilesReady} />
-              <ClickCapture onMapClick={handleClick} />
+              <FitOnOpen jobId={jobId} open={open} tilesReady={tilesReady && !orthophotoError} />
+              {!result && <ClickCapture onMapClick={handleClick} />}
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
                 <Polygon
@@ -324,9 +436,9 @@ export function PolygonDrawer({
                   pathOptions={{
                     color: "#ea580c",
                     fillColor: "#ea580c",
-                    fillOpacity: 0.2,
+                    fillOpacity: 0.15,
                     weight: 2,
-                    dashArray: "4 4",
+                    dashArray: "5 5",
                   }}
                 />
               )}
@@ -338,16 +450,122 @@ export function PolygonDrawer({
           )}
         </div>
 
-        <DialogFooter className="pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="font-mono uppercase text-xs"
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
+        {/* ── Result panel ────────────────────────────────────────────── */}
+        {result && (
+          <div className="px-6 py-4 border-t border-border/40 bg-card/50">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              <span className="text-xs font-mono uppercase text-emerald-400 tracking-wider font-bold">
+                Volume Calculated
+                {result.method === "dsm" && " · DSM Cut/Fill"}
+                {result.method === "geometric" && " · Geometric Estimate"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Net volume */}
+              <div className="bg-background/60 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground uppercase mb-1">
+                  <Mountain className="h-3 w-3" /> Net Volume
+                </div>
+                <div className="text-lg font-bold font-mono">
+                  {result.volumeM3.toLocaleString()}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">m³</span>
+                </div>
+              </div>
+
+              {/* Cut */}
+              {result.cutVolumeM3 != null && (
+                <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/30">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-orange-400 uppercase mb-1">
+                    <TrendingUp className="h-3 w-3" /> Cut
+                  </div>
+                  <div className="text-lg font-bold font-mono text-orange-300">
+                    {result.cutVolumeM3.toLocaleString()}
+                    <span className="text-xs font-normal text-orange-400/70 ml-1">m³</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Fill */}
+              {result.fillVolumeM3 != null && (
+                <div className="bg-sky-500/10 rounded-lg p-3 border border-sky-500/30">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-sky-400 uppercase mb-1">
+                    <TrendingDown className="h-3 w-3" /> Fill
+                  </div>
+                  <div className="text-lg font-bold font-mono text-sky-300">
+                    {result.fillVolumeM3.toLocaleString()}
+                    <span className="text-xs font-normal text-sky-400/70 ml-1">m³</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Area */}
+              <div className="bg-background/60 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground uppercase mb-1">
+                  <Ruler className="h-3 w-3" /> Area
+                </div>
+                <div className="text-lg font-bold font-mono">
+                  {result.areaSqm.toLocaleString()}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">m²</span>
+                </div>
+              </div>
+
+              {/* Geometric fallback — show placeholder cut/fill cards */}
+              {result.cutVolumeM3 == null && (
+                <>
+                  <div className="bg-background/40 rounded-lg p-3 border border-dashed border-border/40 flex flex-col items-center justify-center gap-1">
+                    <Minus className="h-4 w-4 text-muted-foreground/40" />
+                    <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">
+                      Cut — DSM needed
+                    </span>
+                  </div>
+                  <div className="bg-background/40 rounded-lg p-3 border border-dashed border-border/40 flex flex-col items-center justify-center gap-1">
+                    <Minus className="h-4 w-4 text-muted-foreground/40" />
+                    <span className="text-[9px] font-mono text-muted-foreground/50 uppercase">
+                      Fill — DSM needed
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {result.method === "dsm" && (
+              <p className="text-[10px] font-mono text-muted-foreground mt-2">
+                Baseline = minimum perimeter elevation. Net = Cut − Fill.
+                Results saved to your job automatically.
+              </p>
+            )}
+            {result.method === "geometric" && (
+              <p className="text-[10px] font-mono text-amber-400/80 mt-2">
+                ⚠ DSM not available — volume estimated geometrically. Upload drone images to get accurate DSM-based cut/fill.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Footer ──────────────────────────────────────────────────── */}
+        <DialogFooter className="px-6 py-3 border-t border-border/40 bg-card/20">
+          {result ? (
+            <Button
+              size="sm"
+              className="font-mono uppercase text-xs"
+              onClick={() => onOpenChange(false)}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+              Done
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="font-mono uppercase text-xs"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

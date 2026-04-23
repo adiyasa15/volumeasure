@@ -1,5 +1,5 @@
 import { useLocation, useParams } from "wouter";
-import { useGetJob, useDeleteJob, useRefreshJob, useSetJobPolygon, getGetJobQueryKey } from "@workspace/api-client-react";
+import { useGetJob, useDeleteJob, useRefreshJob, getGetJobQueryKey } from "@workspace/api-client-react";
 import { PolygonDrawer } from "@/components/polygon-drawer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,6 @@ export default function JobDetail() {
 
   const deleteJob = useDeleteJob();
   const refreshJob = useRefreshJob();
-  const setPolygon = useSetJobPolygon();
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [polygonDrawerOpen, setPolygonDrawerOpen] = useState(false);
@@ -145,25 +144,9 @@ export default function JobDetail() {
     job.polygonMode === "manual" &&
     job.volumeM3 == null;
 
-  const handleManualMeasure = async (coords: number[][]) => {
-    try {
-      const updated = await setPolygon.mutateAsync({
-        id,
-        data: { polygonCoordinates: coords },
-      });
-      queryClient.setQueryData(getGetJobQueryKey(id), updated);
-      setPolygonDrawerOpen(false);
-      toast({
-        title: "Volume calculated",
-        description: `Measured area: ${updated.areaSqm?.toLocaleString()} m² — Volume: ${updated.volumeM3?.toLocaleString()} m³`,
-      });
-    } catch {
-      toast({
-        title: "Failed to calculate volume",
-        description: "An error occurred while saving the polygon.",
-        variant: "destructive",
-      });
-    }
+  const handleDrawerComplete = () => {
+    // Refresh job data from server after the drawer saves the polygon
+    queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
   };
 
   return (
@@ -534,8 +517,7 @@ export default function JobDetail() {
             : null
         }
         tilesReady={job.orthophotoUrl === "tiles_ready"}
-        onMeasure={handleManualMeasure}
-        isSaving={setPolygon.isPending}
+        onComplete={handleDrawerComplete}
       />
     </div>
   );
