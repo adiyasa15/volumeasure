@@ -1,13 +1,14 @@
 import { logger } from "./logger";
 
-const WEBODM_BASE = "https://spark1.webodm.net";
+const NODE_BASE = "https://spark1.webodm.net";
 
-export type WebodmTask = {
+export type NodeOdmTask = {
   uuid: string;
-  status: number | null;
-  running_progress: number;
+  name?: string;
+  status?: { code: number };
+  running_progress?: number;
   available_assets?: string[];
-  processing_node?: number;
+  error?: string;
 };
 
 const STATUS_MAP: Record<number, "queued" | "running" | "completed" | "failed"> = {
@@ -27,22 +28,22 @@ function token(): string | null {
   return process.env.WEBODM_LIGHTNING_TOKEN || null;
 }
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
+/** Append `?token=<t>` (or `&token=<t>`) to a path. */
+function qs(path: string): string {
   const t = token();
   if (!t) throw new Error("WEBODM_LIGHTNING_TOKEN is not configured");
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", `JWT ${t}`);
-  return fetch(`${WEBODM_BASE}${path}`, { ...init, headers });
+  const sep = path.includes("?") ? "&" : "?";
+  return `${NODE_BASE}${path}${sep}token=${encodeURIComponent(t)}`;
+}
+
+async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  if (!token()) throw new Error("WEBODM_LIGHTNING_TOKEN is not configured");
+  return fetch(qs(path), init);
 }
 
 /**
- * Create a new processing task. The Lightning API expects a multipart upload
- * with the images and an "options" JSON. For first-build we initialize the
- * task with options and an "auto-boundary" workflow flag, but the actual
- * image upload is performed client-side or skipped (placeholder behavior).
- *
- * Returns null when no token is configured (the route handler then runs in
- * "demo" mode and reports status as queued without contacting WebODM).
+ * Initialize a new NodeODM task (no images yet).
+ * Returns the task UUID or null when no token is configured (demo mode).
  */
 export async function createTaskInit(
   name: string,
@@ -57,47 +58,110 @@ export async function createTaskInit(
       { name: "feature-quality", value: "high" },
     ];
     if (opts.gcpFile) {
-      options.push({ name: "dmanual-gcp", value: true });
+      options.push({ name: "use-exif-size", value: false });
     }
+
     const fd = new FormData();
     fd.append("name", name);
     fd.append("options", JSON.stringify(options));
-    fd.append("partial", "true");
+
     if (opts.gcpFile) {
       const blob = new Blob([opts.gcpFile.content], { type: "text/plain" });
       fd.append("gcp", blob, opts.gcpFile.name || "gcp_list.txt");
     }
-    const res = await call("/api/projects/init/task/", {
-      method: "POST",
-      body: fd,
-    });
+
+    const res = await call("/task/new/init", { method: "POST", body: fd });
     if (!res.ok) {
-      logger.warn({ status: res.status }, "WebODM init task failed");
+      const text = await res.text().catch(() => "");
+      logger.warn({ status: res.status, body: text }, "NodeODM init task failed");
       return null;
     }
-    const data = (await res.json()) as { uuid: string };
+    const data = (await res.json()) as { uuid?: string; error?: string };
+    if (data.error || !data.uuid) {
+      logger.warn({ data }, "NodeODM init returned error");
+      return null;
+    }
     return { uuid: data.uuid };
   } catch (err) {
-    logger.error({ err }, "WebODM init task error");
-    return null;
-  }
-}
-
-export async function getTask(uuid: string): Promise<WebodmTask | null> {
-  if (!token()) return null;
-  try {
-    const res = await call(`/api/projects/init/task/${uuid}/`);
-    if (!res.ok) return null;
-    return (await res.json()) as WebodmTask;
-  } catch (err) {
-    logger.error({ err, uuid }, "WebODM get task error");
+    logger.error({ err }, "NodeODM init task error");
     return null;
   }
 }
 
 /**
- * Fetch the bounding box of the orthophoto for a given task.
- * Returns [west, south, east, north] (minLon, minLat, maxLon, maxLat) or null.
+ * Upload a single base64-encoded image to an existing NodeODM task.
+ */
+export async function uploadTaskImage(
+  uuid: string,
+  fileName: string,
+  base64Data: string,
+  mimeType = "image/jpeg",
+): Promise<boolean> {
+  if (!token()) return false;
+  try {
+    const binary = Buffer.from(base64Data, "base64");
+    const blob = new Blob([binary], { type: mimeType });
+    const fd = new FormData();
+    fd.append("images", blob, fileName);
+
+    const res = await call(`/task/new/upload/${uuid}`, { method: "POST", body: fd });
+    if (!res.ok) {
+      logger.warn({ uuid, fileName, status: res.status }, "NodeODM image upload failed");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logger.error({ err, uuid, fileName }, "NodeODM upload image error");
+    return false;
+  }
+}
+
+/**
+ * Commit a task to start processing (after all images are uploaded).
+ */
+export async function commitTask(uuid: string): Promise<boolean> {
+  if (!token()) return false;
+  try {
+    const res = await call(`/task/new/commit/${uuid}`, { method: "POST" });
+    if (!res.ok) {
+      logger.warn({ uuid, status: res.status }, "NodeODM commit task failed");
+      return false;
+    }
+    const data = (await res.json()) as { error?: string };
+    if (data.error) {
+      logger.warn({ uuid, error: data.error }, "NodeODM commit returned error");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logger.error({ err, uuid }, "NodeODM commit task error");
+    return false;
+  }
+}
+
+/**
+ * Fetch current task status from NodeODM.
+ */
+export async function getTask(uuid: string): Promise<NodeOdmTask | null> {
+  if (!token()) return null;
+  try {
+    const res = await call(`/task/${uuid}/info`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as NodeOdmTask;
+    if (data.error) {
+      logger.warn({ uuid, error: data.error }, "NodeODM task info error");
+      return null;
+    }
+    return data;
+  } catch (err) {
+    logger.error({ err, uuid }, "NodeODM get task error");
+    return null;
+  }
+}
+
+/**
+ * Fetch the bounding box of the orthophoto from the task's boundary file.
+ * Returns [west, south, east, north] or null when unavailable.
  */
 export async function fetchOrthophotoBounds(
   uuid: string,
@@ -105,38 +169,54 @@ export async function fetchOrthophotoBounds(
   if (!token()) return null;
   try {
     const res = await call(
-      `/api/projects/init/task/${uuid}/orthophoto/tiles.json`,
+      `/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.bounds.geojson`,
     );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { bounds?: [number, number, number, number] };
-    return data.bounds ?? null;
+    if (!res.ok) {
+      // fallback: try the georeferencing geojson for a bounding polygon
+      const res2 = await call(
+        `/task/${uuid}/assets/odm_georeferencing/odm_georeferencing_model_geo.geojson`,
+      );
+      if (!res2.ok) return null;
+      const geojson = (await res2.json()) as {
+        bbox?: number[];
+        features?: Array<{ geometry?: { coordinates?: number[][][][] } }>;
+      };
+      if (geojson.bbox && geojson.bbox.length >= 4) {
+        const [w, s, e, n] = geojson.bbox;
+        return [w, s, e, n];
+      }
+      return null;
+    }
+    const geojson = (await res.json()) as {
+      bbox?: number[];
+      features?: Array<{ geometry?: { coordinates?: number[][][] } }>;
+    };
+    if (geojson.bbox && geojson.bbox.length >= 4) {
+      const [w, s, e, n] = geojson.bbox;
+      return [w, s, e, n];
+    }
+    // Compute bbox from feature coordinates
+    const coords = geojson.features?.[0]?.geometry?.coordinates?.[0];
+    if (!coords?.length) return null;
+    const lngs = coords.map((c) => c[0]);
+    const lats = coords.map((c) => c[1]);
+    return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
   } catch (err) {
-    logger.error({ err, uuid }, "WebODM bounds error");
+    logger.error({ err, uuid }, "NodeODM bounds error");
     return null;
   }
 }
 
 /**
- * Proxy a single orthophoto tile for the given task UUID.
- * Returns a Buffer with PNG image data, or null on failure.
+ * Proxy a single orthophoto tile.
+ * NodeODM does not have a built-in tile server — returns null (tile overlay disabled).
+ * The polygon-drawer falls back to the Esri satellite basemap.
  */
 export async function fetchOrthophotoTile(
-  uuid: string,
-  z: string,
-  x: string,
-  y: string,
+  _uuid: string,
+  _z: string,
+  _x: string,
+  _y: string,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
-  if (!token()) return null;
-  try {
-    const res = await call(
-      `/api/projects/init/task/${uuid}/orthophoto/tiles/${z}/${x}/${y}.png`,
-    );
-    if (!res.ok) return null;
-    const ab = await res.arrayBuffer();
-    const ct = res.headers.get("content-type") || "image/png";
-    return { buffer: Buffer.from(ab), contentType: ct };
-  } catch (err) {
-    logger.error({ err, uuid, z, x, y }, "WebODM tile proxy error");
-    return null;
-  }
+  return null;
 }

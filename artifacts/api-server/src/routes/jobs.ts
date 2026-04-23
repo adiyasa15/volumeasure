@@ -54,7 +54,7 @@ router.post("/", async (req: AuthedRequest, res) => {
   });
   const webodmGcpUrl =
     gcpFile && init?.uuid
-      ? `https://webodm.net/task/${init.uuid}/gcp/`
+      ? `https://spark1.webodm.net/task/${init.uuid}/assets/gcp_list.txt?token=${process.env.WEBODM_LIGHTNING_TOKEN ?? ""}`
       : null;
 
   const insertImages: StoredImage[] = body.images.map((i) => ({
@@ -162,8 +162,10 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   if (row.webodmTaskId) {
     const task = await getTask(row.webodmTaskId);
     if (task) {
-      nextStatus = statusFromCode(task.status);
-      nextProgress = Math.round(task.running_progress * 100);
+      // NodeODM returns status as { code: number }, not a raw number
+      const statusCode = task.status?.code ?? null;
+      nextStatus = statusFromCode(statusCode);
+      nextProgress = Math.round((task.running_progress ?? 0) * 100);
       if (nextStatus === "completed") {
         completedAt = completedAt ?? new Date();
         // Only auto-assign volume/area for automatic polygon mode.
@@ -178,7 +180,7 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         if (!nextPolygon) {
           nextPolygon = synthesizePolygon(row.latitude, row.longitude);
         }
-        // Signal that orthophoto tiles are ready from processing
+        // Mark orthophoto as ready (bounds available via NodeODM assets)
         if (!nextOrthophotoUrl) {
           nextOrthophotoUrl = "tiles_ready";
         }
