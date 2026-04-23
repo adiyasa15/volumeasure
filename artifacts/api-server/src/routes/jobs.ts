@@ -156,24 +156,27 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   let nextDuration = row.processingDurationSeconds;
   let nextPolygon = row.polygonCoordinates as number[][] | null;
 
+  const isManualMode = row.polygonMode === "manual";
+
   if (row.webodmTaskId) {
     const task = await getTask(row.webodmTaskId);
     if (task) {
       nextStatus = statusFromCode(task.status);
       nextProgress = Math.round(task.running_progress * 100);
-      if (nextStatus === "completed" && nextVolume == null) {
-        // Lightning auto-boundary volume would be fetched from the task
-        // assets endpoint. As a safe fallback estimate based on accepted
-        // image count and source quality.
-        nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
-        nextArea = estimateArea(row.acceptedImageCount);
-        completedAt = new Date();
-      }
-      if (nextStatus === "completed" && nextDuration == null) {
-        nextDuration = computeDuration(row.processingStartedAt, completedAt);
-      }
-      if (nextStatus === "completed" && !nextPolygon) {
-        nextPolygon = synthesizePolygon(row.latitude, row.longitude);
+      if (nextStatus === "completed") {
+        completedAt = completedAt ?? new Date();
+        // Only auto-assign volume/area for automatic polygon mode.
+        // Manual mode leaves them null so the user draws the boundary.
+        if (!isManualMode && nextVolume == null) {
+          nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
+          nextArea = estimateArea(row.acceptedImageCount);
+        }
+        if (nextDuration == null) {
+          nextDuration = computeDuration(row.processingStartedAt, completedAt);
+        }
+        if (!nextPolygon) {
+          nextPolygon = synthesizePolygon(row.latitude, row.longitude);
+        }
       }
     }
   } else {
@@ -186,10 +189,12 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
     else if (pct < 100) nextStatus = "running";
     else {
       nextStatus = "completed";
-      if (nextVolume == null) {
+      completedAt = completedAt ?? new Date();
+      // Only auto-assign volume/area for automatic polygon mode.
+      // Manual mode leaves them null so the user draws the boundary.
+      if (!isManualMode && nextVolume == null) {
         nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
         nextArea = estimateArea(row.acceptedImageCount);
-        completedAt = new Date();
       }
       if (nextDuration == null) {
         nextDuration = computeDuration(row.processingStartedAt, completedAt);
