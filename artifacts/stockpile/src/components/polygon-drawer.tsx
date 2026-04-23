@@ -116,7 +116,47 @@ export function PolygonDrawer({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative flex-1 min-h-[440px] rounded overflow-hidden border border-border/50">
+        {/* Toolbar — always visible above the map */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="font-mono uppercase text-xs"
+            disabled={vertices.length === 0}
+            onClick={undo}
+          >
+            <Undo2 className="h-3.5 w-3.5 mr-1.5" /> Undo
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="font-mono uppercase text-xs hover:bg-destructive/20 hover:text-destructive"
+            disabled={vertices.length === 0}
+            onClick={reset}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear Polygon
+          </Button>
+          <div className="flex-1" />
+          <span className="text-[11px] font-mono text-muted-foreground">
+            {vertices.length === 0 && "Click the map to start drawing"}
+            {vertices.length > 0 && vertices.length < 3 && `${3 - vertices.length} more point${3 - vertices.length > 1 ? "s" : ""} needed`}
+            {vertices.length >= 3 && <span className="text-primary">Polygon ready</span>}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            className="font-mono uppercase text-xs"
+            disabled={vertices.length < 3 || isSaving}
+            onClick={handleMeasure}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+            {isSaving ? "Calculating..." : `Measure Volume (${vertices.length} pts)`}
+          </Button>
+        </div>
+
+        <div className="relative flex-1 min-h-[400px] rounded overflow-hidden border border-border/50">
           {center ? (
             <MapContainer
               center={defaultCenter}
@@ -149,44 +189,9 @@ export function PolygonDrawer({
               No GPS coordinates available for this job.
             </div>
           )}
-
-          <div className="absolute bottom-3 left-3 z-10 bg-background/90 backdrop-blur border border-border/50 rounded px-3 py-2 text-[11px] font-mono text-muted-foreground space-y-1">
-            <div>Vertices: <span className="text-foreground font-bold">{vertices.length}</span></div>
-            {vertices.length >= 3 && (
-              <div className="text-primary">Polygon ready — click Measure Volume</div>
-            )}
-            {vertices.length > 0 && vertices.length < 3 && (
-              <div>Need {3 - vertices.length} more point{3 - vertices.length > 1 ? "s" : ""}</div>
-            )}
-            {vertices.length === 0 && (
-              <div>Click the map to start drawing</div>
-            )}
-          </div>
         </div>
 
-        <DialogFooter className="flex-col-reverse sm:flex-row gap-2 pt-2">
-          <div className="flex gap-2 flex-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="font-mono uppercase text-xs"
-              disabled={vertices.length === 0}
-              onClick={undo}
-            >
-              <Undo2 className="h-3.5 w-3.5 mr-1.5" /> Undo
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="font-mono uppercase text-xs hover:bg-destructive/20 hover:text-destructive"
-              disabled={vertices.length === 0}
-              onClick={reset}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Reset
-            </Button>
-          </div>
+        <DialogFooter className="pt-1">
           <Button
             type="button"
             variant="outline"
@@ -195,16 +200,6 @@ export function PolygonDrawer({
             onClick={() => onOpenChange(false)}
           >
             Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="font-mono uppercase text-xs"
-            disabled={vertices.length < 3 || isSaving}
-            onClick={handleMeasure}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-            {isSaving ? "Calculating..." : `Measure Volume (${vertices.length} pts)`}
           </Button>
         </DialogFooter>
       </DialogContent>
