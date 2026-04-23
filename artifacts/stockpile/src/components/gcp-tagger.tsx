@@ -38,7 +38,7 @@ type Props = {
   onExport: (filename: string, content: string) => void;
 };
 
-const DEFAULT_PROJECTION = "EPSG:4326";
+const DEFAULT_PROJECTION = "+proj=cartesian";
 
 const PROJECTION_PRESETS = [
   "+proj=cartesian",
@@ -155,28 +155,8 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <Select
-                  value={activeImageName}
-                  onValueChange={(v) => setActiveImageName(v)}
-                >
-                  <SelectTrigger className="font-mono text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {images.map((img) => {
-                      const count = points.filter(
-                        (p) => p.imageName === img.name,
-                      ).length;
-                      return (
-                        <SelectItem key={img.name} value={img.name}>
-                          {img.name} {count > 0 ? `(${count})` : ""}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono uppercase text-muted-foreground shrink-0">
                     Projection
                   </span>
@@ -197,6 +177,26 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
                     </span>
                   </div>
                 </div>
+                <Select
+                  value={activeImageName}
+                  onValueChange={(v) => setActiveImageName(v)}
+                >
+                  <SelectTrigger className="font-mono text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {images.map((img) => {
+                      const count = points.filter(
+                        (p) => p.imageName === img.name,
+                      ).length;
+                      return (
+                        <SelectItem key={img.name} value={img.name}>
+                          {img.name} {count > 0 ? `(${count})` : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="relative inline-block w-full bg-background border border-border/50 rounded overflow-hidden">
