@@ -9,7 +9,7 @@ export interface ImageProcessResult {
   sharpnessScore?: number;
 }
 
-export async function processImageFile(file: File, extractGps: boolean): Promise<ImageProcessResult> {
+export async function processImageFile(file: File): Promise<ImageProcessResult> {
   const result: ImageProcessResult = {
     file,
     accepted: true,
@@ -21,13 +21,30 @@ export async function processImageFile(file: File, extractGps: boolean): Promise
       return { ...result, accepted: false, rejectionReason: 'Unsupported format' };
     }
 
-    // Extract GPS if requested and possible
-    if (extractGps && (file.type === 'image/jpeg' || file.type === 'image/tiff')) {
+    // Extract GPS from EXIF/XMP for JPEG and TIFF (PNG has no EXIF GPS support)
+    if (file.type === 'image/jpeg' || file.type === 'image/tiff') {
       try {
         const exifData = await exifr.gps(file);
-        if (exifData) {
+        if (exifData && exifData.latitude != null && exifData.longitude != null) {
           result.latitude = exifData.latitude;
           result.longitude = exifData.longitude;
+        } else {
+          // Fallback: parse raw GPS tags manually for edge-case formats
+          const parsed = await exifr.parse(file, {
+            pick: ['GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef'],
+          });
+          if (parsed?.GPSLatitude && parsed?.GPSLongitude) {
+            const [latD, latM, latS] = parsed.GPSLatitude as number[];
+            const [lonD, lonM, lonS] = parsed.GPSLongitude as number[];
+            let lat = latD + latM / 60 + latS / 3600;
+            let lon = lonD + lonM / 60 + lonS / 3600;
+            if (parsed.GPSLatitudeRef === 'S') lat = -lat;
+            if (parsed.GPSLongitudeRef === 'W') lon = -lon;
+            if (isFinite(lat) && isFinite(lon)) {
+              result.latitude = lat;
+              result.longitude = lon;
+            }
+          }
         }
       } catch (e) {
         console.warn('Failed to extract GPS from', file.name, e);

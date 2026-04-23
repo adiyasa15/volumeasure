@@ -38,6 +38,7 @@ export default function NewJob() {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [gcpFile, setGcpFile] = useState<{ name: string; content: string } | null>(null);
   const [gcpTaggerOpen, setGcpTaggerOpen] = useState(false);
+  const [gpsAutoDetected, setGpsAutoDetected] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gcpInputRef = useRef<HTMLInputElement>(null);
   
@@ -66,19 +67,19 @@ export default function NewJob() {
     setProcessingProgress(0);
     
     const processedImages: ImageProcessResult[] = [];
-    const source = form.getValues("sourceType");
     
     // Process files sequentially to not block the main thread too much
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const result = await processImageFile(file, source === 'drone');
+      const result = await processImageFile(file);
       processedImages.push(result);
       setProcessingProgress(((i + 1) / files.length) * 100);
       
-      // If we found GPS coordinates and form doesn't have them yet, auto-fill
-      if (result.latitude && result.longitude && !form.getValues("latitude")) {
-        form.setValue("latitude", result.latitude);
-        form.setValue("longitude", result.longitude);
+      // Auto-fill GPS from the first image that has coordinates
+      if (result.latitude != null && result.longitude != null && form.getValues("latitude") == null) {
+        form.setValue("latitude", result.latitude, { shouldDirty: true, shouldValidate: true });
+        form.setValue("longitude", result.longitude, { shouldDirty: true, shouldValidate: true });
+        setGpsAutoDetected(true);
       }
     }
     
@@ -320,48 +321,64 @@ export default function NewJob() {
                     )}
                   />
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="latitude"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono uppercase text-xs text-muted-foreground">Latitude</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="number" 
-                              step="any" 
-                              placeholder="Auto-filled from EXIF" 
-                              className="font-mono bg-background/50" 
-                              value={field.value ?? ""}
-                              onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono uppercase text-xs text-muted-foreground">Location (GPS)</span>
+                      {gpsAutoDetected && (
+                        <span className="flex items-center gap-1 text-[10px] font-mono uppercase text-primary">
+                          <Crosshair className="h-3 w-3" /> Auto-detected from image
+                        </span>
                       )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="longitude"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono uppercase text-xs text-muted-foreground">Longitude</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="number" 
-                              step="any" 
-                              placeholder="Auto-filled from EXIF" 
-                              className="font-mono bg-background/50" 
-                              value={field.value ?? ""}
-                              onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="latitude"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="font-mono uppercase text-xs text-muted-foreground">Latitude</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="Auto-filled from EXIF"
+                                className={`font-mono bg-background/50 ${gpsAutoDetected && field.value != null ? "border-primary/50 text-primary" : ""}`}
+                                value={field.value ?? ""}
+                                onChange={e => {
+                                  setGpsAutoDetected(false);
+                                  field.onChange(e.target.value === "" ? null : Number(e.target.value));
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="longitude"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="font-mono uppercase text-xs text-muted-foreground">Longitude</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="Auto-filled from EXIF"
+                                className={`font-mono bg-background/50 ${gpsAutoDetected && field.value != null ? "border-primary/50 text-primary" : ""}`}
+                                value={field.value ?? ""}
+                                onChange={e => {
+                                  setGpsAutoDetected(false);
+                                  field.onChange(e.target.value === "" ? null : Number(e.target.value));
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
 
                   <FormField
