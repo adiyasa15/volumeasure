@@ -246,3 +246,188 @@ export function orthophotoAssetUrl(uuid: string): string {
   if (!t) throw new Error("WEBODM_LIGHTNING_TOKEN is not configured");
   return `${NODE_BASE}/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.tif?token=${encodeURIComponent(t)}`;
 }
+
+// ---------------------------------------------------------------------------
+// DSM-based cut / fill volume calculation
+// ---------------------------------------------------------------------------
+
+export type VolumeResult = {
+  cutM3: number;
+  fillM3: number;
+  netM3: number;
+  areaSqm: number;
+  baseline: number;
+  pixelCount: number;
+};
+
+/** Ray-casting point-in-polygon (2-D coordinates). */
+function pointInPoly(px: number, py: number, poly: [number, number][]): boolean {
+  let inside = false;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect =
+      yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Download the NodeODM DSM GeoTIFF for `uuid`, then compute cut/fill volumes
+ * inside `polygonLatLng` (each element is [lat, lng] in WGS-84 degrees).
+ *
+ * Baseline = minimum elevation sampled at the polygon perimeter vertices.
+ * Returns null when the DSM is unavailable or cannot be parsed.
+ */
+export async function calculateVolumeFromDSM(
+  uuid: string,
+  polygonLatLng: number[][],
+): Promise<VolumeResult | null> {
+  if (!token()) return null;
+
+  // ── 1. Download DSM ──────────────────────────────────────────────────────
+  const dsmUrl = qs(`/task/${uuid}/assets/odm_dem/dsm.tif`);
+  let arrayBuffer: ArrayBuffer;
+  try {
+    const res = await fetch(dsmUrl);
+    if (!res.ok) {
+      logger.warn({ uuid, status: res.status }, "DSM download failed");
+      return null;
+    }
+    arrayBuffer = await res.arrayBuffer();
+  } catch (err) {
+    logger.error({ err, uuid }, "DSM fetch error");
+    return null;
+  }
+
+  // ── 2. Parse GeoTIFF ─────────────────────────────────────────────────────
+  const { fromArrayBuffer } = await import("geotiff");
+  const proj4Module = await import("proj4");
+  const proj4: (srcProj: string, dstProj: string, coord: [number, number]) => [number, number] =
+    (proj4Module.default as any).bind(proj4Module.default) ?? proj4Module.default;
+
+  const tiff = await fromArrayBuffer(arrayBuffer);
+  const image = await tiff.getImage();
+
+  const width = image.getWidth();
+  const height = image.getHeight();
+  const MAX_PIXELS = 25_000_000; // ~5 000 × 5 000 guard
+  if (width * height > MAX_PIXELS) {
+    logger.warn({ uuid, width, height }, "DSM too large for server-side volume calc");
+    return null;
+  }
+
+  // Bounding box in native CRS [west, south, east, north]
+  const bbox = image.getBoundingBox() as [number, number, number, number];
+  const pixelW = (bbox[2] - bbox[0]) / width;
+  const pixelH = (bbox[3] - bbox[1]) / height;
+
+  // No-data value (null when absent)
+  const noDataValue = image.getGDALNoData();
+
+  // Read first band (elevation)
+  const rasters = await image.readRasters({ interleave: false });
+  const data = rasters[0] as Float32Array | Int16Array | Uint16Array | Float64Array;
+
+  // ── 3. Detect CRS & project polygon ─────────────────────────────────────
+  const geoKeys = image.getGeoKeys();
+  const epsg: number =
+    (geoKeys as any).ProjectedCSTypeGeoKey ||
+    (geoKeys as any).GeographicTypeGeoKey ||
+    4326;
+
+  // Convert polygon [lat, lng] → native CRS [x, y]
+  let polyNative: [number, number][];
+  if (epsg === 4326 || epsg === 4269) {
+    // Geographic — just swap to [lng, lat]
+    polyNative = polygonLatLng.map(([lat, lng]) => [lng, lat] as [number, number]);
+  } else {
+    // Projected — use proj4; fall back gracefully if EPSG is unknown
+    try {
+      polyNative = polygonLatLng.map(([lat, lng]) =>
+        proj4(`EPSG:4326`, `EPSG:${epsg}`, [lng, lat]),
+      );
+    } catch {
+      // proj4 doesn't know this EPSG: use plain bbox ratio to estimate
+      polyNative = polygonLatLng.map(([lat, lng]) => [lng, lat] as [number, number]);
+    }
+  }
+
+  // ── 4. Pixel-area in m² ──────────────────────────────────────────────────
+  let pixelAreaM2: number;
+  if (epsg === 4326 || epsg === 4269) {
+    const centerLat = ((bbox[1] + bbox[3]) / 2) * (Math.PI / 180);
+    const mPerDegLng = 111_319.9 * Math.cos(centerLat);
+    const mPerDegLat = 111_319.9;
+    pixelAreaM2 = Math.abs(pixelW * mPerDegLng) * Math.abs(pixelH * mPerDegLat);
+  } else {
+    // Projected CRS: units are metres
+    pixelAreaM2 = Math.abs(pixelW * pixelH);
+  }
+
+  // ── 5. Baseline = min elevation at polygon perimeter ────────────────────
+  const perimeterElevations: number[] = [];
+  for (const [px, py] of polyNative) {
+    const col = Math.round((px - bbox[0]) / pixelW);
+    const row = Math.round((bbox[3] - py) / pixelH);
+    if (col >= 0 && col < width && row >= 0 && row < height) {
+      const elev = Number(data[row * width + col]);
+      if (noDataValue == null || Math.abs(elev - noDataValue) > 1e-3) {
+        if (!isNaN(elev) && isFinite(elev)) perimeterElevations.push(elev);
+      }
+    }
+  }
+  if (perimeterElevations.length === 0) {
+    logger.warn({ uuid }, "No valid perimeter elevations found in DSM");
+    return null;
+  }
+  const baseline = Math.min(...perimeterElevations);
+
+  // ── 6. Integrate cut / fill over interior pixels ─────────────────────────
+  let cutM3 = 0;
+  let fillM3 = 0;
+  let pixelCount = 0;
+
+  // Clamp iteration to polygon bounding box for performance
+  const polyXs = polyNative.map((p) => p[0]);
+  const polyYs = polyNative.map((p) => p[1]);
+  const bboxMinX = Math.max(bbox[0], Math.min(...polyXs));
+  const bboxMaxX = Math.min(bbox[2], Math.max(...polyXs));
+  const bboxMinY = Math.max(bbox[1], Math.min(...polyYs));
+  const bboxMaxY = Math.min(bbox[3], Math.max(...polyYs));
+
+  const colStart = Math.max(0, Math.floor((bboxMinX - bbox[0]) / pixelW));
+  const colEnd   = Math.min(width - 1, Math.ceil((bboxMaxX - bbox[0]) / pixelW));
+  const rowStart = Math.max(0, Math.floor((bbox[3] - bboxMaxY) / pixelH));
+  const rowEnd   = Math.min(height - 1, Math.ceil((bbox[3] - bboxMinY) / pixelH));
+
+  for (let row = rowStart; row <= rowEnd; row++) {
+    for (let col = colStart; col <= colEnd; col++) {
+      // Pixel centre in native CRS
+      const px = bbox[0] + (col + 0.5) * pixelW;
+      const py = bbox[3] - (row + 0.5) * pixelH;
+
+      if (!pointInPoly(px, py, polyNative)) continue;
+
+      const elev = Number(data[row * width + col]);
+      if (noDataValue != null && Math.abs(elev - noDataValue) <= 1e-3) continue;
+      if (isNaN(elev) || !isFinite(elev)) continue;
+
+      const diff = elev - baseline;
+      if (diff > 0) cutM3  += diff * pixelAreaM2;
+      else          fillM3 += Math.abs(diff) * pixelAreaM2;
+      pixelCount++;
+    }
+  }
+
+  return {
+    cutM3:      Math.round(cutM3 * 100) / 100,
+    fillM3:     Math.round(fillM3 * 100) / 100,
+    netM3:      Math.round((cutM3 - fillM3) * 100) / 100,
+    areaSqm:    Math.round(pixelCount * pixelAreaM2 * 100) / 100,
+    baseline:   Math.round(baseline * 1000) / 1000,
+    pixelCount,
+  };
+}

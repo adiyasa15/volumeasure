@@ -32,6 +32,8 @@ export const jobsTable = pgTable(
     progress: integer("progress").notNull().default(0),
     webodmTaskId: text("webodm_task_id"),
     volumeM3: doublePrecision("volume_m3"),
+    cutVolumeM3: doublePrecision("cut_volume_m3"),
+    fillVolumeM3: doublePrecision("fill_volume_m3"),
     areaSqm: doublePrecision("area_sqm"),
     orthophotoUrl: text("orthophoto_url"),
     latitude: doublePrecision("latitude"),

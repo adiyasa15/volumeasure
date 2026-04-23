@@ -11,6 +11,8 @@ export function rowToJob(row: JobRow) {
     progress: row.progress,
     webodmTaskId: row.webodmTaskId ?? null,
     volumeM3: row.volumeM3 ?? null,
+    cutVolumeM3: row.cutVolumeM3 ?? null,
+    fillVolumeM3: row.fillVolumeM3 ?? null,
     areaSqm: row.areaSqm ?? null,
     orthophotoUrl: row.orthophotoUrl ?? null,
     latitude: row.latitude ?? null,

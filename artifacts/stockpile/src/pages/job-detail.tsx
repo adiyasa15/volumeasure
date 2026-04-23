@@ -288,9 +288,10 @@ export default function JobDetail() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 md:w-1/2">
+              {/* Net Volume — primary metric */}
               <div className="bg-background/50 rounded-lg p-4 border border-border/50 flex flex-col justify-center">
                 <div className="text-xs text-muted-foreground font-mono uppercase mb-1 flex items-center">
-                  <Mountain className="mr-1.5 h-3.5 w-3.5" /> Volume
+                  <Mountain className="mr-1.5 h-3.5 w-3.5" /> Net Volume
                 </div>
                 <div className="text-2xl sm:text-3xl font-bold font-mono">
                   {job.volumeM3 !== null && job.volumeM3 !== undefined ? (
@@ -299,6 +300,17 @@ export default function JobDetail() {
                     <span className="text-muted-foreground/50">--</span>
                   )}
                 </div>
+                {/* Cut / fill breakdown — only shown when DSM data is available */}
+                {(job as any).cutVolumeM3 != null && (
+                  <div className="mt-2 flex gap-3 text-[10px] font-mono">
+                    <span className="text-orange-400">
+                      ▲ Cut: {(job as any).cutVolumeM3?.toLocaleString()} m³
+                    </span>
+                    <span className="text-sky-400">
+                      ▼ Fill: {(job as any).fillVolumeM3?.toLocaleString()} m³
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="bg-background/50 rounded-lg p-4 border border-border/50 flex flex-col justify-center">
                 <div className="text-xs text-muted-foreground font-mono uppercase mb-1 flex items-center">

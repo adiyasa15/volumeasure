@@ -9,6 +9,7 @@ import {
   RefreshJobParams,
 } from "@workspace/api-zod";
 import { rowToJob } from "../lib/jobMapper";
+import { logger } from "../lib/logger";
 import { Readable } from "stream";
 import {
   createTaskInit,
@@ -20,6 +21,7 @@ import {
   commitTask,
   deleteTask,
   orthophotoAssetUrl,
+  calculateVolumeFromDSM,
 } from "../lib/webodm";
 import multer from "multer";
 
@@ -499,17 +501,42 @@ router.patch("/:id/polygon", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const areaSqm = polygonAreaM2(polygonCoordinates);
-  const heightEstimateM = 2.0;
-  const volumeM3 = Math.round(areaSqm * heightEstimateM * 0.33 * 100) / 100;
+  // Attempt real DSM-based cut/fill calculation first
+  let cutM3: number | null = null;
+  let fillM3: number | null = null;
+  let netM3: number | null = null;
+  let areaSqm: number | null = null;
+
+  if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
+    try {
+      const vol = await calculateVolumeFromDSM(row.webodmTaskId, polygonCoordinates);
+      if (vol) {
+        cutM3   = vol.cutM3;
+        fillM3  = vol.fillM3;
+        netM3   = vol.netM3;
+        areaSqm = vol.areaSqm;
+      }
+    } catch (err) {
+      logger.warn({ err, id: row.id }, "DSM volume calculation failed, falling back");
+    }
+  }
+
+  // Geometric fallback when DSM unavailable
+  if (netM3 == null) {
+    areaSqm = Math.round(polygonAreaM2(polygonCoordinates) * 100) / 100;
+    const heightEstimateM = 2.0;
+    netM3 = Math.round(areaSqm * heightEstimateM * 0.33 * 100) / 100;
+  }
 
   const [updated] = await db
     .update(jobsTable)
     .set({
       polygonCoordinates,
-      areaSqm: Math.round(areaSqm * 100) / 100,
-      volumeM3,
-      updatedAt: new Date(),
+      areaSqm,
+      volumeM3:      netM3,
+      cutVolumeM3:   cutM3,
+      fillVolumeM3:  fillM3,
+      updatedAt:     new Date(),
     })
     .where(eq(jobsTable.id, row.id))
     .returning();
