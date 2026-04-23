@@ -11,7 +11,7 @@ import { generateJobReport } from "@/lib/report";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -33,6 +33,24 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
+
+/** Flies the Leaflet map to the orthophoto bounds fetched from the API. */
+function FitOrthophoto({ jobId, tilesReady }: { jobId: string; tilesReady: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!tilesReady) return;
+    fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { bounds?: [number, number, number, number] } | null) => {
+        if (!data?.bounds) return;
+        const [west, south, east, north] = data.bounds;
+        map.flyToBounds([[south, west], [north, east]], { padding: [24, 24], maxZoom: 20, animate: true, duration: 1.2 });
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tilesReady]);
+  return null;
+}
 
 export default function JobDetail() {
   const params = useParams();
@@ -332,21 +350,30 @@ export default function JobDetail() {
                   <MapContainer
                     center={[job.latitude, job.longitude]}
                     zoom={18}
+                    maxZoom={23}
                     scrollWheelZoom={true}
                     style={{ height: '100%', width: '100%', zIndex: 1 }}
                   >
                     <TileLayer
                       attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
                       url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                      maxNativeZoom={19}
+                      maxZoom={23}
                     />
                     {job.orthophotoUrl === "tiles_ready" && job.webodmTaskId && isCompleted && (
                       <TileLayer
                         url={`/api/jobs/${job.id}/tiles/{z}/{x}/{y}`}
                         attribution="Orthophoto &copy; PileMetric"
                         opacity={0.9}
+                        maxNativeZoom={22}
+                        maxZoom={23}
                         crossOrigin="use-credentials"
                       />
                     )}
+                    <FitOrthophoto
+                      jobId={job.id}
+                      tilesReady={job.orthophotoUrl === "tiles_ready" && isCompleted}
+                    />
                     <Marker position={[job.latitude, job.longitude]}>
                       <Popup className="font-mono">
                         {job.name}<br/>

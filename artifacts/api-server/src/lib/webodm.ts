@@ -96,6 +96,27 @@ export async function getTask(uuid: string): Promise<WebodmTask | null> {
 }
 
 /**
+ * Fetch the bounding box of the orthophoto for a given task.
+ * Returns [west, south, east, north] (minLon, minLat, maxLon, maxLat) or null.
+ */
+export async function fetchOrthophotoBounds(
+  uuid: string,
+): Promise<[number, number, number, number] | null> {
+  if (!token()) return null;
+  try {
+    const res = await call(
+      `/api/projects/init/task/${uuid}/orthophoto/tiles.json`,
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { bounds?: [number, number, number, number] };
+    return data.bounds ?? null;
+  } catch (err) {
+    logger.error({ err, uuid }, "WebODM bounds error");
+    return null;
+  }
+}
+
+/**
  * Proxy a single orthophoto tile for the given task UUID.
  * Returns a Buffer with PNG image data, or null on failure.
  */

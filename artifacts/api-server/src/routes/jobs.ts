@@ -9,7 +9,7 @@ import {
   RefreshJobParams,
 } from "@workspace/api-zod";
 import { rowToJob } from "../lib/jobMapper";
-import { createTaskInit, getTask, statusFromCode, fetchOrthophotoTile } from "../lib/webodm";
+import { createTaskInit, getTask, statusFromCode, fetchOrthophotoTile, fetchOrthophotoBounds } from "../lib/webodm";
 
 interface AuthedRequest extends Request {
   userId?: string;
@@ -254,6 +254,41 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
   res.setHeader("Content-Type", tile.contentType);
   res.setHeader("Cache-Control", "public, max-age=86400");
   res.end(tile.buffer);
+});
+
+/**
+ * Return the orthophoto bounding box so the frontend can fly to it.
+ * Responds with { bounds: [west, south, east, north] } or falls back to
+ * { center: [lat, lng] } from the job row when no real processing token exists.
+ */
+router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!row) { res.status(404).end(); return; }
+
+  if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
+    const bounds = await fetchOrthophotoBounds(row.webodmTaskId);
+    if (bounds) {
+      res.json({ bounds });
+      return;
+    }
+  }
+
+  // Fallback: return job center so frontend can at least zoom to it
+  if (row.latitude != null && row.longitude != null) {
+    const d = 0.0005; // ~55 m padding
+    res.json({
+      bounds: [row.longitude - d, row.latitude - d, row.longitude + d, row.latitude + d],
+    });
+    return;
+  }
+
+  res.status(404).end();
 });
 
 /**
