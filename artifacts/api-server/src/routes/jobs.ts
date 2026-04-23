@@ -9,6 +9,7 @@ import {
   RefreshJobParams,
 } from "@workspace/api-zod";
 import { rowToJob } from "../lib/jobMapper";
+import { Readable } from "stream";
 import {
   createTaskInit,
   getTask,
@@ -18,6 +19,7 @@ import {
   uploadTaskImage,
   commitTask,
   deleteTask,
+  orthophotoAssetUrl,
 } from "../lib/webodm";
 import multer from "multer";
 
@@ -418,6 +420,59 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
   }
 
   res.status(404).end();
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id/orthophoto — stream the completed GeoTIFF from NodeODM
+// The token stays server-side; the client receives a plain stream.
+// Supports HTTP Range requests for georaster's COG partial reads.
+// ---------------------------------------------------------------------------
+router.get("/:id/orthophoto", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!row) { res.status(404).end(); return; }
+  if (!row.webodmTaskId) { res.status(404).json({ error: "No NodeODM task" }); return; }
+  if (row.orthophotoUrl !== "tiles_ready") {
+    res.status(404).json({ error: "Orthophoto not ready yet" });
+    return;
+  }
+
+  let url: string;
+  try {
+    url = orthophotoAssetUrl(row.webodmTaskId);
+  } catch {
+    res.status(503).json({ error: "NodeODM token not configured" });
+    return;
+  }
+
+  // Forward Range header so georaster/geotiff.js can do COG partial reads
+  const rangeHeader = req.headers.range;
+  const fetchHeaders: HeadersInit = {};
+  if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
+
+  const upstream = await fetch(url, { headers: fetchHeaders });
+  if (!upstream.ok && upstream.status !== 206) {
+    res.status(upstream.status).end();
+    return;
+  }
+
+  res.setHeader("Content-Type", upstream.headers.get("Content-Type") ?? "image/tiff");
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  const cl = upstream.headers.get("Content-Length");
+  if (cl) res.setHeader("Content-Length", cl);
+  const cr = upstream.headers.get("Content-Range");
+  if (cr) res.setHeader("Content-Range", cr);
+
+  res.status(upstream.status);
+
+  if (!upstream.body) { res.end(); return; }
+  Readable.fromWeb(upstream.body as import("stream/web").ReadableStream).pipe(res);
 });
 
 // ---------------------------------------------------------------------------

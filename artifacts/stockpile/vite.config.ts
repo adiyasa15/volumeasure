@@ -51,7 +51,10 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
     },
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "leaflet"],
+  },
+  optimizeDeps: {
+    include: ["georaster", "georaster-layer-for-leaflet"],
   },
   root: path.resolve(import.meta.dirname),
   build: {

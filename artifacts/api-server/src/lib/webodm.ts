@@ -236,3 +236,13 @@ export async function fetchOrthophotoTile(
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   return null;
 }
+
+/**
+ * Build the direct NodeODM URL for the orthophoto GeoTIFF asset.
+ * Used to proxy/stream the file through our server so the token stays server-side.
+ */
+export function orthophotoAssetUrl(uuid: string): string {
+  const t = token();
+  if (!t) throw new Error("WEBODM_LIGHTNING_TOKEN is not configured");
+  return `${NODE_BASE}/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.tif?token=${encodeURIComponent(t)}`;
+}
