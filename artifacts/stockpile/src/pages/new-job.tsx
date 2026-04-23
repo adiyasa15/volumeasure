@@ -172,10 +172,8 @@ export default function NewJob() {
       const job = await createJob.mutateAsync({ data: payload });
 
       toast({
-        title: gcpFile ? "Task submitted" : "Job Created",
-        description: gcpFile
-          ? "Please click the link on the job page to tag your markers before processing continues."
-          : "Your measurement job has been queued for processing.",
+        title: "Job Created",
+        description: "Your measurement job has been queued for processing.",
       });
 
       setLocation(`/jobs/${job.id}`);

@@ -30,7 +30,7 @@ export default function Home() {
               </h1>
               
               <p className="mx-auto max-w-[700px] text-lg md:text-xl text-muted-foreground leading-relaxed">
-                Upload drone or DSLR imagery. We process it through WebODM and return precise volume and area calculations. The industrial dashboard for quarry and mining operations.
+                Upload drone or DSLR imagery. We process it using professional-grade photogrammetry and return precise volume and area calculations. The industrial dashboard for quarry and mining operations.
               </p>
               
               <div className="flex flex-col sm:flex-row w-full max-w-sm gap-4 items-center justify-center mt-4">
@@ -67,7 +67,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-xl font-bold font-mono uppercase">2. Automated Processing</h3>
                 <p className="text-muted-foreground">
-                  Your imagery is securely sent to WebODM Lightning for professional-grade photogrammetry and point-cloud generation.
+                  Your imagery is securely processed using professional-grade photogrammetry and point-cloud generation.
                 </p>
               </div>
               <div className="flex flex-col items-start space-y-4">

@@ -98,7 +98,7 @@ export default function JobDetail() {
       queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
       toast({
         title: "Status Refreshed",
-        description: "Successfully fetched latest status from WebODM."
+        description: "Successfully fetched latest status."
       });
     } catch (err) {
       toast({
