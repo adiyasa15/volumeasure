@@ -521,6 +521,7 @@ export default function JobDetail() {
             ? [job.latitude, job.longitude]
             : null
         }
+        tilesReady={job.orthophotoUrl === "tiles_ready"}
         onMeasure={handleManualMeasure}
         isSaving={setPolygon.isPending}
       />

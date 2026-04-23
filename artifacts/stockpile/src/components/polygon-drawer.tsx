@@ -73,13 +73,14 @@ function DotMarkers({ positions }: DotMarkerProps) {
 
 /**
  * Fixes Leaflet sizing inside a dialog and flies to the job's orthophoto bounds.
- * Must be rendered inside a MapContainer.
+ * Re-triggers every time `open` changes to true.
  */
-function FitOnOpen({ jobId }: { jobId: string }) {
+function FitOnOpen({ jobId, open }: { jobId: string; open: boolean }) {
   const map = useMap();
 
   useEffect(() => {
-    // Wait for the dialog open animation before correcting map size
+    if (!open) return;
+
     const timer = setTimeout(async () => {
       map.invalidateSize();
       try {
@@ -93,13 +94,13 @@ function FitOnOpen({ jobId }: { jobId: string }) {
           { padding: [32, 32], maxZoom: 20, animate: true, duration: 1.0 },
         );
       } catch {
-        // fallback: just invalidate size so the map renders correctly
+        // fallback: invalidateSize already called above
       }
     }, 300);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [open, jobId]);
 
   return null;
 }
@@ -109,6 +110,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   jobId: string;
   center: [number, number] | null;
+  tilesReady?: boolean;
   onMeasure: (coords: number[][]) => void;
   isSaving?: boolean;
 };
@@ -118,6 +120,7 @@ export function PolygonDrawer({
   onOpenChange,
   jobId,
   center,
+  tilesReady = false,
   onMeasure,
   isSaving,
 }: Props) {
@@ -201,13 +204,26 @@ export function PolygonDrawer({
               style={{ height: "100%", width: "100%", zIndex: 1 }}
               className="absolute inset-0"
             >
+              {/* Esri satellite basemap */}
               <TileLayer
                 attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                 maxNativeZoom={19}
                 maxZoom={23}
               />
-              <FitOnOpen jobId={jobId} />
+
+              {/* Orthophoto overlay — only when real tiles are available */}
+              {tilesReady && (
+                <TileLayer
+                  url={`/api/jobs/${jobId}/tiles/{z}/{x}/{y}`}
+                  maxNativeZoom={23}
+                  maxZoom={23}
+                  opacity={0.9}
+                  tms={false}
+                />
+              )}
+
+              <FitOnOpen jobId={jobId} open={open} />
               <ClickCapture onMapClick={handleClick} />
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
