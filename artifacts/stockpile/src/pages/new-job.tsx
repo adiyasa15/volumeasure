@@ -39,6 +39,8 @@ export default function NewJob() {
   const [gcpFile, setGcpFile] = useState<{ name: string; content: string } | null>(null);
   const [gcpTaggerOpen, setGcpTaggerOpen] = useState(false);
   const [gpsAutoDetected, setGpsAutoDetected] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "uploading" | "committing">("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gcpInputRef = useRef<HTMLInputElement>(null);
   
@@ -137,32 +139,26 @@ export default function NewJob() {
     }
 
     try {
-      const totalFileSizeBytes = images.reduce(
-        (sum, img) => sum + img.file.size,
-        0,
-      );
-      const firstWithGps = images.find(
-        (img) => img.latitude != null && img.longitude != null,
-      );
+      const totalFileSizeBytes = images.reduce((sum, img) => sum + img.file.size, 0);
+      const firstWithGps = images.find((img) => img.latitude != null && img.longitude != null);
       const lat = values.latitude || firstWithGps?.latitude;
       const lng = values.longitude || firstWithGps?.longitude;
       const captureLocation =
-        lat != null && lng != null
-          ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-          : undefined;
+        lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : undefined;
+
       const payload = {
         ...values,
         polygonMode: values.polygonMode,
         latitude: lat || undefined,
         longitude: lng || undefined,
-        images: images.map(img => ({
+        images: images.map((img) => ({
           name: img.file.name,
           sizeBytes: img.file.size,
           accepted: img.accepted,
           rejectionReason: img.rejectionReason,
           latitude: img.latitude,
           longitude: img.longitude,
-          sharpnessScore: img.sharpnessScore
+          sharpnessScore: img.sharpnessScore,
         })),
         gcpFile: gcpFile,
         totalFileSizeBytes,
@@ -170,18 +166,50 @@ export default function NewJob() {
         captureDate: new Date().toISOString(),
       };
 
+      // Step 1: Create job + NodeODM task shell
       const job = await createJob.mutateAsync({ data: payload });
 
+      // Step 2: Upload accepted image files to NodeODM (via our server proxy)
+      const acceptedImages = images.filter((img) => img.accepted);
+      if (acceptedImages.length > 0 && job.webodmTaskId) {
+        setUploadPhase("uploading");
+        setUploadProgress(0);
+
+        for (let i = 0; i < acceptedImages.length; i++) {
+          const img = acceptedImages[i];
+          const fd = new FormData();
+          fd.append("images", img.file, img.file.name);
+          await fetch(`/api/jobs/${job.id}/images`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          });
+          setUploadProgress(Math.round(((i + 1) / acceptedImages.length) * 100));
+        }
+
+        // Step 3: Commit — tells NodeODM to start processing
+        setUploadPhase("committing");
+        await fetch(`/api/jobs/${job.id}/commit`, {
+          method: "POST",
+          credentials: "include",
+        });
+      }
+
+      setUploadPhase("idle");
       toast({
-        title: "Job Created",
-        description: "Your measurement job has been queued for processing.",
+        title: "Job submitted",
+        description:
+          acceptedImages.length > 0 && job.webodmTaskId
+            ? `${acceptedImages.length} image${acceptedImages.length > 1 ? "s" : ""} uploaded and processing started.`
+            : "Job created in demo mode.",
       });
 
       setLocation(`/jobs/${job.id}`);
     } catch (error) {
+      setUploadPhase("idle");
       toast({
         title: "Failed to create job",
-        description: "An error occurred while creating the measurement job.",
+        description: "An error occurred while submitting the measurement job.",
         variant: "destructive",
       });
     }
@@ -599,13 +627,31 @@ export default function NewJob() {
                     )}
                   </div>
 
+                  {uploadPhase !== "idle" && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+                        <span>
+                          {uploadPhase === "uploading"
+                            ? `Uploading images... ${uploadProgress}%`
+                            : "Starting processing on NodeODM..."}
+                        </span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <Progress value={uploadPhase === "committing" ? 100 : uploadProgress} className="h-1.5" />
+                    </div>
+                  )}
+
                   <Button
                     type="submit"
                     className="w-full font-mono uppercase"
-                    disabled={isProcessingFiles || images.length === 0 || createJob.isPending}
+                    disabled={isProcessingFiles || images.length === 0 || createJob.isPending || uploadPhase !== "idle"}
                   >
                     {createJob.isPending ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Queuing Job...</>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Job...</>
+                    ) : uploadPhase === "uploading" ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading {uploadProgress}%...</>
+                    ) : uploadPhase === "committing" ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting Processing...</>
                     ) : (
                       "Start Processing"
                     )}

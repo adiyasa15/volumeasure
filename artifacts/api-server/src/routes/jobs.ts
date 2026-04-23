@@ -9,7 +9,17 @@ import {
   RefreshJobParams,
 } from "@workspace/api-zod";
 import { rowToJob } from "../lib/jobMapper";
-import { createTaskInit, getTask, statusFromCode, fetchOrthophotoTile, fetchOrthophotoBounds } from "../lib/webodm";
+import {
+  createTaskInit,
+  getTask,
+  statusFromCode,
+  fetchOrthophotoTile,
+  fetchOrthophotoBounds,
+  uploadTaskImage,
+  commitTask,
+  deleteTask,
+} from "../lib/webodm";
+import multer from "multer";
 
 interface AuthedRequest extends Request {
   userId?: string;
@@ -27,9 +37,17 @@ function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
 }
 
 const router: IRouter = Router();
-
 router.use(requireAuth);
 
+/** Multer instance — keeps files in memory for NodeODM proxying. */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB per image
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/jobs — list all jobs for the current user
+// ---------------------------------------------------------------------------
 router.get("/", async (req: AuthedRequest, res) => {
   const rows = await db
     .select()
@@ -39,6 +57,10 @@ router.get("/", async (req: AuthedRequest, res) => {
   res.json(rows.map(rowToJob));
 });
 
+// ---------------------------------------------------------------------------
+// POST /api/jobs — create a job shell + NodeODM task, return job ID
+// Images are NOT uploaded here; use POST /:id/images + POST /:id/commit next.
+// ---------------------------------------------------------------------------
 router.post("/", async (req: AuthedRequest, res) => {
   const parsed = CreateJobBody.safeParse(req.body);
   if (!parsed.success) {
@@ -47,11 +69,13 @@ router.post("/", async (req: AuthedRequest, res) => {
   }
   const body = parsed.data;
   const accepted = body.images.filter((i) => i.accepted).length;
-
   const gcpFile = body.gcpFile ?? null;
+
+  // Initialize a NodeODM task (no images yet — images come via /:id/images)
   const init = await createTaskInit(body.name, {
     gcpFile: gcpFile ? { name: gcpFile.name, content: gcpFile.content } : null,
   });
+
   const webodmGcpUrl =
     gcpFile && init?.uuid
       ? `https://spark1.webodm.net/task/${init.uuid}/assets/gcp_list.txt?token=${process.env.WEBODM_LIGHTNING_TOKEN ?? ""}`
@@ -95,9 +119,13 @@ router.post("/", async (req: AuthedRequest, res) => {
       images: insertImages,
     })
     .returning();
+
   res.status(201).json(rowToJob(row));
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id — fetch a single job
+// ---------------------------------------------------------------------------
 router.get("/:id", async (req: AuthedRequest, res) => {
   const parsed = GetJobParams.safeParse(req.params);
   if (!parsed.success) {
@@ -116,22 +144,124 @@ router.get("/:id", async (req: AuthedRequest, res) => {
   res.json(rowToJob(row));
 });
 
+// ---------------------------------------------------------------------------
+// DELETE /api/jobs/:id — delete job + remove NodeODM task
+// ---------------------------------------------------------------------------
 router.delete("/:id", async (req: AuthedRequest, res) => {
   const parsed = DeleteJobParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
+  const [row] = await db
+    .select({ webodmTaskId: jobsTable.webodmTaskId })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  // Remove from NodeODM first (best-effort, don't block on failure)
+  if (row?.webodmTaskId) {
+    deleteTask(row.webodmTaskId).catch(() => {});
+  }
+
   await db
     .delete(jobsTable)
     .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)));
   res.status(204).end();
 });
 
-/**
- * Poll WebODM for the latest status. If no WebODM task is associated (demo
- * mode), simulate progress so the UI still feels alive.
- */
+// ---------------------------------------------------------------------------
+// POST /api/jobs/:id/images — upload one or more images to NodeODM task
+// Accepts multipart/form-data with field name "images" (multiple files OK).
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/images",
+  upload.array("images", 500),
+  async (req: AuthedRequest & { files?: Express.Multer.File[] }, res) => {
+    const { id } = req.params;
+    const [row] = await db
+      .select()
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (!row.webodmTaskId) {
+      res.status(400).json({ error: "No NodeODM task associated with this job (demo mode)" });
+      return;
+    }
+
+    const files = (req.files as Express.Multer.File[]) ?? [];
+    if (files.length === 0) {
+      res.status(400).json({ error: "No images provided" });
+      return;
+    }
+
+    const results: Array<{ name: string; ok: boolean }> = [];
+    for (const file of files) {
+      const base64 = file.buffer.toString("base64");
+      const ok = await uploadTaskImage(
+        row.webodmTaskId,
+        file.originalname,
+        base64,
+        file.mimetype,
+      );
+      results.push({ name: file.originalname, ok });
+    }
+
+    const failed = results.filter((r) => !r.ok).map((r) => r.name);
+    if (failed.length === files.length) {
+      res.status(502).json({ error: "All image uploads failed", failed });
+      return;
+    }
+
+    res.json({ uploaded: results.filter((r) => r.ok).length, failed });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/jobs/:id/commit — start NodeODM processing after all images uploaded
+// ---------------------------------------------------------------------------
+router.post("/:id/commit", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (!row.webodmTaskId) {
+    res.status(400).json({ error: "No NodeODM task associated with this job (demo mode)" });
+    return;
+  }
+
+  const ok = await commitTask(row.webodmTaskId);
+  if (!ok) {
+    res.status(502).json({ error: "NodeODM commit failed — ensure images were uploaded first" });
+    return;
+  }
+
+  // Update job status to reflect it is now actively queued on the node
+  const [updated] = await db
+    .update(jobsTable)
+    .set({ status: "queued", updatedAt: new Date() })
+    .where(eq(jobsTable.id, row.id))
+    .returning();
+
+  res.json(rowToJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/jobs/:id/refresh — poll NodeODM for the latest status
+// Falls back to a simulated demo progression when no NodeODM task exists.
+// ---------------------------------------------------------------------------
 router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   const parsed = RefreshJobParams.safeParse(req.params);
   if (!parsed.success) {
@@ -160,16 +290,16 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   const isManualMode = row.polygonMode === "manual";
 
   if (row.webodmTaskId) {
+    // Real NodeODM task — poll for status
     const task = await getTask(row.webodmTaskId);
     if (task) {
-      // NodeODM returns status as { code: number }, not a raw number
+      // NodeODM returns status as { code: number }
       const statusCode = task.status?.code ?? null;
       nextStatus = statusFromCode(statusCode);
       nextProgress = Math.round((task.running_progress ?? 0) * 100);
+
       if (nextStatus === "completed") {
         completedAt = completedAt ?? new Date();
-        // Only auto-assign volume/area for automatic polygon mode.
-        // Manual mode leaves them null so the user draws the boundary.
         if (!isManualMode && nextVolume == null) {
           nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
           nextArea = estimateArea(row.acceptedImageCount);
@@ -180,14 +310,14 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         if (!nextPolygon) {
           nextPolygon = synthesizePolygon(row.latitude, row.longitude);
         }
-        // Mark orthophoto as ready (bounds available via NodeODM assets)
+        // Signal that NodeODM assets (bounds etc.) are accessible
         if (!nextOrthophotoUrl) {
           nextOrthophotoUrl = "tiles_ready";
         }
       }
     }
   } else {
-    // Demo progression for environments without a configured WebODM task
+    // Demo mode — simulate progress over 90 seconds
     const elapsedMs = Date.now() - row.createdAt.getTime();
     const totalMs = 90_000;
     const pct = Math.min(100, Math.floor((elapsedMs / totalMs) * 100));
@@ -197,8 +327,6 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
     else {
       nextStatus = "completed";
       completedAt = completedAt ?? new Date();
-      // Only auto-assign volume/area for automatic polygon mode.
-      // Manual mode leaves them null so the user draws the boundary.
       if (!isManualMode && nextVolume == null) {
         nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
         nextArea = estimateArea(row.acceptedImageCount);
@@ -230,10 +358,10 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   res.json(rowToJob(updated));
 });
 
-/**
- * Proxy orthophoto map tiles from the processing service.
- * Only available for jobs that completed with real photogrammetry processing.
- */
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id/tiles/:z/:x/:y — orthophoto tile proxy (NodeODM stub)
+// NodeODM does not serve XYZ tiles natively; returns 404.
+// ---------------------------------------------------------------------------
 router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
   const { id, z, x, y } = req.params;
   const [row] = await db
@@ -258,11 +386,9 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
   res.end(tile.buffer);
 });
 
-/**
- * Return the orthophoto bounding box so the frontend can fly to it.
- * Responds with { bounds: [west, south, east, north] } or falls back to
- * { center: [lat, lng] } from the job row when no real processing token exists.
- */
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id/tilejson — orthophoto bounding box for map auto-fly
+// ---------------------------------------------------------------------------
 router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
   const { id } = req.params;
   const [row] = await db
@@ -273,6 +399,7 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
 
   if (!row) { res.status(404).end(); return; }
 
+  // Try to get real bounds from NodeODM assets
   if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
     const bounds = await fetchOrthophotoBounds(row.webodmTaskId);
     if (bounds) {
@@ -281,9 +408,9 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
     }
   }
 
-  // Fallback: return job center so frontend can at least zoom to it
+  // Fallback: approximate bounds from job GPS center (~55 m padding)
   if (row.latitude != null && row.longitude != null) {
-    const d = 0.0005; // ~55 m padding
+    const d = 0.0005;
     res.json({
       bounds: [row.longitude - d, row.latitude - d, row.longitude + d, row.latitude + d],
     });
@@ -293,9 +420,9 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
   res.status(404).end();
 });
 
-/**
- * Save a manually drawn polygon and compute volume/area from it.
- */
+// ---------------------------------------------------------------------------
+// PATCH /api/jobs/:id/polygon — save manual polygon, compute volume + area
+// ---------------------------------------------------------------------------
 router.patch("/:id/polygon", async (req: AuthedRequest, res) => {
   const parsed = RefreshJobParams.safeParse(req.params);
   if (!parsed.success) {
@@ -334,9 +461,11 @@ router.patch("/:id/polygon", async (req: AuthedRequest, res) => {
   res.json(rowToJob(updated));
 });
 
-/**
- * Compute the area of a lat/lng polygon in m² using the spherical excess formula.
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Area of a lat/lng polygon in m² using spherical excess formula. */
 function polygonAreaM2(coords: number[][]): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -368,15 +497,8 @@ function computeDuration(start: Date | null, end: Date | null): number | null {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
 }
 
-/**
- * Build a small, regular octagon polygon (lat/lng pairs) around the given
- * center so the report can show the measured footprint when WebODM has not
- * supplied an explicit boundary. ~30m radius approximation.
- */
-function synthesizePolygon(
-  lat: number | null,
-  lng: number | null,
-): number[][] | null {
+/** Approximate stockpile footprint as a regular octagon (~30 m radius). */
+function synthesizePolygon(lat: number | null, lng: number | null): number[][] | null {
   if (lat == null || lng == null) return null;
   const radiusDeg = 0.00027;
   const points: number[][] = [];

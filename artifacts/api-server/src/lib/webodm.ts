@@ -208,6 +208,22 @@ export async function fetchOrthophotoBounds(
 }
 
 /**
+ * Remove a task from NodeODM (called when a job is deleted).
+ */
+export async function deleteTask(uuid: string): Promise<void> {
+  if (!token()) return;
+  try {
+    await call("/task/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uuid }),
+    });
+  } catch (err) {
+    logger.error({ err, uuid }, "NodeODM delete task error");
+  }
+}
+
+/**
  * Proxy a single orthophoto tile.
  * NodeODM does not have a built-in tile server — returns null (tile overlay disabled).
  * The polygon-drawer falls back to the Esri satellite basemap.
