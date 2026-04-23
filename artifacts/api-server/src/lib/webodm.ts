@@ -1,6 +1,6 @@
 import { logger } from "./logger";
 
-const WEBODM_BASE = "https://webodm.net";
+const WEBODM_BASE = "https://spark1.webodm.net";
 
 export type WebodmTask = {
   uuid: string;
