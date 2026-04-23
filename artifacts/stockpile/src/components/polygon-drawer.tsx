@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapContainer, TileLayer, Polygon, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import { Trash2, Undo2, CheckCircle2 } from "lucide-react";
 
@@ -71,9 +71,43 @@ function DotMarkers({ positions }: DotMarkerProps) {
   return null;
 }
 
+/**
+ * Fixes Leaflet sizing inside a dialog and flies to the job's orthophoto bounds.
+ * Must be rendered inside a MapContainer.
+ */
+function FitOnOpen({ jobId }: { jobId: string }) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Wait for the dialog open animation before correcting map size
+    const timer = setTimeout(async () => {
+      map.invalidateSize();
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { bounds?: [number, number, number, number] };
+        if (!data?.bounds) return;
+        const [west, south, east, north] = data.bounds;
+        map.flyToBounds(
+          [[south, west], [north, east]],
+          { padding: [32, 32], maxZoom: 20, animate: true, duration: 1.0 },
+        );
+      } catch {
+        // fallback: just invalidate size so the map renders correctly
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  jobId: string;
   center: [number, number] | null;
   onMeasure: (coords: number[][]) => void;
   isSaving?: boolean;
@@ -82,6 +116,7 @@ type Props = {
 export function PolygonDrawer({
   open,
   onOpenChange,
+  jobId,
   center,
   onMeasure,
   isSaving,
@@ -161,6 +196,7 @@ export function PolygonDrawer({
             <MapContainer
               center={defaultCenter}
               zoom={18}
+              maxZoom={23}
               scrollWheelZoom
               style={{ height: "100%", width: "100%", zIndex: 1 }}
               className="absolute inset-0"
@@ -168,7 +204,10 @@ export function PolygonDrawer({
               <TileLayer
                 attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxNativeZoom={19}
+                maxZoom={23}
               />
+              <FitOnOpen jobId={jobId} />
               <ClickCapture onMapClick={handleClick} />
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (

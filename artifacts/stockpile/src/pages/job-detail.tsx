@@ -11,7 +11,7 @@ import { generateJobReport } from "@/lib/report";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -33,24 +33,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
-
-/** Flies the Leaflet map to the orthophoto bounds fetched from the API. */
-function FitOrthophoto({ jobId, tilesReady }: { jobId: string; tilesReady: boolean }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!tilesReady) return;
-    fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: { bounds?: [number, number, number, number] } | null) => {
-        if (!data?.bounds) return;
-        const [west, south, east, north] = data.bounds;
-        map.flyToBounds([[south, west], [north, east]], { padding: [24, 24], maxZoom: 20, animate: true, duration: 1.2 });
-      })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tilesReady]);
-  return null;
-}
 
 export default function JobDetail() {
   const params = useParams();
@@ -370,10 +352,6 @@ export default function JobDetail() {
                         crossOrigin="use-credentials"
                       />
                     )}
-                    <FitOrthophoto
-                      jobId={job.id}
-                      tilesReady={job.orthophotoUrl === "tiles_ready" && isCompleted}
-                    />
                     <Marker position={[job.latitude, job.longitude]}>
                       <Popup className="font-mono">
                         {job.name}<br/>
@@ -537,6 +515,7 @@ export default function JobDetail() {
       <PolygonDrawer
         open={polygonDrawerOpen}
         onOpenChange={setPolygonDrawerOpen}
+        jobId={id}
         center={
           job.latitude != null && job.longitude != null
             ? [job.latitude, job.longitude]
