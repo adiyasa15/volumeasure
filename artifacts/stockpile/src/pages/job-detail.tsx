@@ -49,21 +49,24 @@ export default function JobDetail() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [polygonDrawerOpen, setPolygonDrawerOpen] = useState(false);
 
-  // Auto-poll: while job is queued or running, call the sync endpoint every 5 s
-  // so the processing service status is fetched and the UI updates automatically
+  // Auto-poll every 15 s while queued or running.
+  // Uses setQueryData from the mutation result to avoid a double-fetch.
   useEffect(() => {
     const isActive = job?.status === 'queued' || job?.status === 'running';
     if (!isActive) return;
 
-    const interval = setInterval(async () => {
+    const poll = async () => {
       try {
-        await refreshJob.mutateAsync({ id });
-        queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+        const updated = await refreshJob.mutateAsync({ id });
+        if (updated) {
+          queryClient.setQueryData(getGetJobQueryKey(id), updated);
+        }
       } catch {
         // silently ignore background poll errors
       }
-    }, 5000);
+    };
 
+    const interval = setInterval(poll, 15_000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.status, id]);
@@ -100,8 +103,8 @@ export default function JobDetail() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refreshJob.mutateAsync({ id });
-      queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+      const updated = await refreshJob.mutateAsync({ id });
+      if (updated) queryClient.setQueryData(getGetJobQueryKey(id), updated);
       toast({
         title: "Status Refreshed",
         description: "Successfully fetched latest status."
@@ -257,16 +260,31 @@ export default function JobDetail() {
                 )}
               </div>
               
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm font-mono">
-                  <span>Processing Progress</span>
-                  <span>{job.progress}%</span>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-mono text-muted-foreground">
+                  <span>
+                    {job.status === 'queued' && 'Waiting in NodeODM queue…'}
+                    {job.status === 'running' && job.progress === 0 && 'Starting photogrammetry…'}
+                    {job.status === 'running' && job.progress > 0 && `Processing on NodeODM…`}
+                    {job.status === 'completed' && 'Processing complete'}
+                    {job.status === 'failed' && 'Processing failed'}
+                  </span>
+                  <span className="tabular-nums">
+                    {job.status === 'queued' ? '—' : `${job.status === 'completed' ? 100 : job.progress}%`}
+                  </span>
                 </div>
-                <Progress 
-                  value={job.progress} 
-                  className="h-2" 
-                  
-                />
+
+                {/* Indeterminate sliding bar while queued or running at 0% */}
+                {(job.status === 'queued' || (job.status === 'running' && job.progress === 0)) ? (
+                  <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+                    <div className="h-full bg-primary/70 rounded-full progress-indeterminate" />
+                  </div>
+                ) : (
+                  <Progress
+                    value={job.status === 'completed' ? 100 : job.progress}
+                    className="h-2"
+                  />
+                )}
               </div>
             </div>
 

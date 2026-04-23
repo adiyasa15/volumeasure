@@ -327,3 +327,14 @@
     inset: -1px;
   }
 }
+
+@keyframes progress-slide {
+  0%   { transform: translateX(-100%); }
+  60%  { transform: translateX(200%); }
+  100% { transform: translateX(200%); }
+}
+
+.progress-indeterminate {
+  animation: progress-slide 1.6s ease-in-out infinite;
+  width: 40%;
+}

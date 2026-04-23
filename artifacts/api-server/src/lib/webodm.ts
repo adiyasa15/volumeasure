@@ -6,7 +6,10 @@ export type NodeOdmTask = {
   uuid: string;
   name?: string;
   status?: { code: number };
-  running_progress?: number;
+  /** 0–100 integer reported by NodeODM during processing */
+  progress?: number;
+  processingTime?: number;
+  imagesCount?: number;
   available_assets?: string[];
   error?: string;
 };

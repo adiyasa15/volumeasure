@@ -287,6 +287,7 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   let nextVolume = row.volumeM3;
   let nextArea = row.areaSqm;
   let completedAt = row.completedAt;
+  let processingStartedAt = row.processingStartedAt;
   let nextDuration = row.processingDurationSeconds;
   let nextPolygon = row.polygonCoordinates as number[][] | null;
   let nextOrthophotoUrl = row.orthophotoUrl;
@@ -300,7 +301,14 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
       // NodeODM returns status as { code: number }
       const statusCode = task.status?.code ?? null;
       nextStatus = statusFromCode(statusCode);
-      nextProgress = Math.round((task.running_progress ?? 0) * 100);
+
+      // NodeODM reports `progress` as a 0–100 integer (confirmed from API)
+      nextProgress = Math.min(100, Math.max(0, Math.round(task.progress ?? 0)));
+
+      // Record when processing actually starts (first time we see running)
+      if (nextStatus === "running" && !processingStartedAt) {
+        processingStartedAt = new Date();
+      }
 
       if (nextStatus === "completed") {
         completedAt = completedAt ?? new Date();
@@ -353,6 +361,7 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
       areaSqm: nextArea,
       orthophotoUrl: nextOrthophotoUrl,
       completedAt,
+      processingStartedAt,
       processingDurationSeconds: nextDuration,
       polygonCoordinates: nextPolygon,
       updatedAt: new Date(),
