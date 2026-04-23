@@ -40,6 +40,28 @@ type Props = {
 
 const DEFAULT_PROJECTION = "EPSG:4326";
 
+const PROJECTION_PRESETS = [
+  "+proj=cartesian",
+  "+proj=longlat +datum=WGS84 +no_defs",
+  "+proj=utm +zone=1 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=48 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=50 +datum=WGS84 +units=m +no_defs",
+  "EPSG:4326",
+  "EPSG:3857",
+  "EPSG:32601",
+  "EPSG:32610",
+  "EPSG:32614",
+  "EPSG:32633",
+  "EPSG:32648",
+  "EPSG:32650",
+  "EPSG:32654",
+  "EPSG:32655",
+  "WGS84 UTM 48N",
+  "WGS84 UTM 50N",
+];
+
 export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
   const [activeImageName, setActiveImageName] = useState<string>("");
   const [imageDims, setImageDims] = useState<{ w: number; h: number } | null>(null);
@@ -154,15 +176,26 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
                     })}
                   </SelectContent>
                 </Select>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono uppercase text-muted-foreground">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-[10px] font-mono uppercase text-muted-foreground shrink-0">
                     Projection
                   </span>
-                  <Input
-                    value={projection}
-                    onChange={(e) => setProjection(e.target.value)}
-                    className="h-8 w-32 font-mono text-xs"
-                  />
+                  <div className="relative flex-1 min-w-0">
+                    <input
+                      list="gcp-projection-list"
+                      value={projection}
+                      onChange={(e) => setProjection(e.target.value)}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      placeholder="e.g. EPSG:4326"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                    <datalist id="gcp-projection-list">
+                      {PROJECTION_PRESETS.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
               </div>
 
