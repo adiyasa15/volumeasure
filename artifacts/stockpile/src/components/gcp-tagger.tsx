@@ -181,20 +181,20 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
                     Projection
                   </span>
                   <div className="relative flex-1 min-w-0">
-                    <input
-                      list="gcp-projection-list"
+                    <select
                       value={projection}
                       onChange={(e) => setProjection(e.target.value)}
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="e.g. EPSG:4326"
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
-                    <datalist id="gcp-projection-list">
+                      className="h-8 w-full appearance-none rounded-md border border-input bg-background pl-2 pr-7 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                    >
                       {PROJECTION_PRESETS.map((p) => (
-                        <option key={p} value={p} />
+                        <option key={p} value={p}>{p}</option>
                       ))}
-                    </datalist>
+                    </select>
+                    <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-muted-foreground">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </span>
                   </div>
                 </div>
               </div>
