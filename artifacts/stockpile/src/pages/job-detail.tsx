@@ -41,19 +41,7 @@ export default function JobDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  // Custom polling logic based on status
-  const { data: job, isLoading, error } = useGetJob(id, {
-    query: {
-      refetchInterval: (query: { state: { data?: { status?: string } } }) => {
-        const currentJob = query.state.data;
-        if (currentJob?.status === 'queued' || currentJob?.status === 'running') {
-          return 5000;
-        }
-        return false;
-      },
-    },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any);
+  const { data: job, isLoading, error } = useGetJob(id);
 
   const deleteJob = useDeleteJob();
   const refreshJob = useRefreshJob();
@@ -61,6 +49,25 @@ export default function JobDetail() {
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [polygonDrawerOpen, setPolygonDrawerOpen] = useState(false);
+
+  // Auto-poll: while job is queued or running, call the sync endpoint every 5 s
+  // so the processing service status is fetched and the UI updates automatically
+  useEffect(() => {
+    const isActive = job?.status === 'queued' || job?.status === 'running';
+    if (!isActive) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshJob.mutateAsync({ id });
+        queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+      } catch {
+        // silently ignore background poll errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status, id]);
 
   // If job doesn't exist or error
   useEffect(() => {
