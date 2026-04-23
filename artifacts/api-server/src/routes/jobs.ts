@@ -81,6 +81,7 @@ router.post("/", async (req: AuthedRequest, res) => {
       latitude: body.latitude ?? null,
       longitude: body.longitude ?? null,
       notes: body.notes ?? null,
+      polygonMode: body.polygonMode ?? "automatic",
       gcpEnabled: gcpFile ? 1 : 0,
       gcpFileName: gcpFile?.name ?? null,
       gcpFileContent: gcpFile?.content ?? null,
@@ -215,6 +216,66 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
     .returning();
   res.json(rowToJob(updated));
 });
+
+/**
+ * Save a manually drawn polygon and compute volume/area from it.
+ */
+router.patch("/:id/polygon", async (req: AuthedRequest, res) => {
+  const parsed = RefreshJobParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const { polygonCoordinates } = req.body as { polygonCoordinates: number[][] };
+  if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length < 3) {
+    res.status(400).json({ error: "polygonCoordinates must have at least 3 points" });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const areaSqm = polygonAreaM2(polygonCoordinates);
+  const heightEstimateM = 2.0;
+  const volumeM3 = Math.round(areaSqm * heightEstimateM * 0.33 * 100) / 100;
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      polygonCoordinates,
+      areaSqm: Math.round(areaSqm * 100) / 100,
+      volumeM3,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobsTable.id, row.id))
+    .returning();
+  res.json(rowToJob(updated));
+});
+
+/**
+ * Compute the area of a lat/lng polygon in m² using the spherical excess formula.
+ */
+function polygonAreaM2(coords: number[][]): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let area = 0;
+  const n = coords.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const xi = toRad(coords[i][1]);
+    const xj = toRad(coords[j][1]);
+    const yi = toRad(coords[i][0]);
+    const yj = toRad(coords[j][0]);
+    area += (xj - xi) * (2 + Math.sin(yi) + Math.sin(yj));
+  }
+  return Math.abs((area * R * R) / 2);
+}
 
 function estimateVolume(acceptedImages: number, precision: string): number {
   const base = Math.max(1, acceptedImages) * 38.7;

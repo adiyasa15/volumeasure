@@ -16,7 +16,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { CreateJobBody, Job } from "../api.schemas";
+import type { CreateJobBody, Job, SetJobPolygonBody } from "../api.schemas";
 
 import { customFetch } from "../../custom-fetch";
 import type { ErrorType, BodyType } from "../../custom-fetch";
@@ -334,6 +334,92 @@ export const useDeleteJob = <
   TContext
 > => {
   return useMutation(getDeleteJobMutationOptions(options));
+};
+/**
+ * @summary Save a manually drawn polygon and compute volume from it
+ */
+export const getSetJobPolygonUrl = (id: string) => {
+  return `/api/jobs/${id}/polygon`;
+};
+
+export const setJobPolygon = async (
+  id: string,
+  setJobPolygonBody: SetJobPolygonBody,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getSetJobPolygonUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(setJobPolygonBody),
+  });
+};
+
+export const getSetJobPolygonMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setJobPolygon>>,
+    TError,
+    { id: string; data: BodyType<SetJobPolygonBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setJobPolygon>>,
+  TError,
+  { id: string; data: BodyType<SetJobPolygonBody> },
+  TContext
+> => {
+  const mutationKey = ["setJobPolygon"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setJobPolygon>>,
+    { id: string; data: BodyType<SetJobPolygonBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return setJobPolygon(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetJobPolygonMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setJobPolygon>>
+>;
+export type SetJobPolygonMutationBody = BodyType<SetJobPolygonBody>;
+export type SetJobPolygonMutationError = ErrorType<void>;
+
+/**
+ * @summary Save a manually drawn polygon and compute volume from it
+ */
+export const useSetJobPolygon = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setJobPolygon>>,
+    TError,
+    { id: string; data: BodyType<SetJobPolygonBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setJobPolygon>>,
+  TError,
+  { id: string; data: BodyType<SetJobPolygonBody> },
+  TContext
+> => {
+  return useMutation(getSetJobPolygonMutationOptions(options));
 };
 /**
  * @summary Poll WebODM for the latest task status and update the job

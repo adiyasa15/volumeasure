@@ -88,6 +88,40 @@ paths:
       responses:
         "204":
           description: Deleted
+  /jobs/{id}/polygon:
+    patch:
+      operationId: setJobPolygon
+      tags: [jobs]
+      summary: Save a manually drawn polygon and compute volume from it
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [polygonCoordinates]
+              properties:
+                polygonCoordinates:
+                  type: array
+                  items:
+                    type: array
+                    items:
+                      type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
   /jobs/{id}/refresh:
     post:
       operationId: refreshJob
@@ -149,6 +183,9 @@ components:
     PrecisionLevel:
       type: string
       enum: [low, medium, high]
+    PolygonMode:
+      type: string
+      enum: [automatic, manual]
     JobStatus:
       type: string
       enum: [queued, running, completed, failed]
@@ -222,6 +259,8 @@ components:
           format: date-time
           nullable: true
           description: Capture timestamp from EXIF or operator input.
+        polygonMode:
+          $ref: "#/components/schemas/PolygonMode"
     Job:
       type: object
       required:
@@ -230,6 +269,7 @@ components:
         - materialType
         - sourceType
         - precisionLevel
+        - polygonMode
         - status
         - progress
         - gcpEnabled
@@ -249,6 +289,8 @@ components:
           $ref: "#/components/schemas/SourceType"
         precisionLevel:
           $ref: "#/components/schemas/PrecisionLevel"
+        polygonMode:
+          $ref: "#/components/schemas/PolygonMode"
         status:
           $ref: "#/components/schemas/JobStatus"
         progress:

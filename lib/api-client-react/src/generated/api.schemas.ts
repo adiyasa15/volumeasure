@@ -34,6 +34,13 @@ export const PrecisionLevel = {
   high: "high",
 } as const;
 
+export type PolygonMode = (typeof PolygonMode)[keyof typeof PolygonMode];
+
+export const PolygonMode = {
+  automatic: "automatic",
+  manual: "manual",
+} as const;
+
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 
 export const JobStatus = {
@@ -75,6 +82,7 @@ export interface CreateJobBody {
   captureLocation?: string | null;
   /** Capture timestamp from EXIF or operator input. */
   captureDate?: string | null;
+  polygonMode?: PolygonMode;
 }
 
 export interface Job {
@@ -83,6 +91,7 @@ export interface Job {
   materialType: MaterialType;
   sourceType: SourceType;
   precisionLevel: PrecisionLevel;
+  polygonMode: PolygonMode;
   status: JobStatus;
   /** 0-100 */
   progress: number;
@@ -143,3 +152,7 @@ export interface ActivityItem {
   processingDurationSeconds?: number | null;
   createdAt: string;
 }
+
+export type SetJobPolygonBody = {
+  polygonCoordinates: number[][];
+};

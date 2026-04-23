@@ -23,6 +23,7 @@ export const ListJobsResponseItem = zod.object({
   materialType: zod.enum(["sand", "soil", "coal"]),
   sourceType: zod.enum(["drone", "smartphone", "dslr"]),
   precisionLevel: zod.enum(["low", "medium", "high"]),
+  polygonMode: zod.enum(["automatic", "manual"]),
   status: zod.enum(["queued", "running", "completed", "failed"]),
   progress: zod.number().describe("0-100"),
   webodmTaskId: zod.string().nullish(),
@@ -99,6 +100,7 @@ export const CreateJobBody = zod.object({
     .date()
     .nullish()
     .describe("Capture timestamp from EXIF or operator input."),
+  polygonMode: zod.enum(["automatic", "manual"]).optional(),
 });
 
 /**
@@ -114,6 +116,7 @@ export const GetJobResponse = zod.object({
   materialType: zod.enum(["sand", "soil", "coal"]),
   sourceType: zod.enum(["drone", "smartphone", "dslr"]),
   precisionLevel: zod.enum(["low", "medium", "high"]),
+  polygonMode: zod.enum(["automatic", "manual"]),
   status: zod.enum(["queued", "running", "completed", "failed"]),
   progress: zod.number().describe("0-100"),
   webodmTaskId: zod.string().nullish(),
@@ -157,6 +160,59 @@ export const DeleteJobParams = zod.object({
 });
 
 /**
+ * @summary Save a manually drawn polygon and compute volume from it
+ */
+export const SetJobPolygonParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const SetJobPolygonBody = zod.object({
+  polygonCoordinates: zod.array(zod.array(zod.number())),
+});
+
+export const SetJobPolygonResponse = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  materialType: zod.enum(["sand", "soil", "coal"]),
+  sourceType: zod.enum(["drone", "smartphone", "dslr"]),
+  precisionLevel: zod.enum(["low", "medium", "high"]),
+  polygonMode: zod.enum(["automatic", "manual"]),
+  status: zod.enum(["queued", "running", "completed", "failed"]),
+  progress: zod.number().describe("0-100"),
+  webodmTaskId: zod.string().nullish(),
+  volumeM3: zod.number().nullish(),
+  areaSqm: zod.number().nullish(),
+  orthophotoUrl: zod.string().nullish(),
+  latitude: zod.number().nullish(),
+  longitude: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  gcpEnabled: zod.boolean(),
+  webodmGcpUrl: zod.string().nullish(),
+  totalFileSizeBytes: zod.number().nullish(),
+  captureLocation: zod.string().nullish(),
+  captureDate: zod.coerce.date().nullish(),
+  processingStartedAt: zod.coerce.date().nullish(),
+  processingDurationSeconds: zod.number().nullish(),
+  polygonCoordinates: zod.array(zod.array(zod.number())).nullish(),
+  imageCount: zod.number(),
+  acceptedImageCount: zod.number(),
+  images: zod.array(
+    zod.object({
+      name: zod.string(),
+      sizeBytes: zod.number(),
+      accepted: zod.boolean(),
+      rejectionReason: zod.string().nullish(),
+      latitude: zod.number().nullish(),
+      longitude: zod.number().nullish(),
+      sharpnessScore: zod.number().nullish(),
+    }),
+  ),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+  completedAt: zod.coerce.date().nullish(),
+});
+
+/**
  * @summary Poll WebODM for the latest task status and update the job
  */
 export const RefreshJobParams = zod.object({
@@ -169,6 +225,7 @@ export const RefreshJobResponse = zod.object({
   materialType: zod.enum(["sand", "soil", "coal"]),
   sourceType: zod.enum(["drone", "smartphone", "dslr"]),
   precisionLevel: zod.enum(["low", "medium", "high"]),
+  polygonMode: zod.enum(["automatic", "manual"]),
   status: zod.enum(["queued", "running", "completed", "failed"]),
   progress: zod.number().describe("0-100"),
   webodmTaskId: zod.string().nullish(),

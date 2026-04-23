@@ -48,6 +48,7 @@ export const jobsTable = pgTable(
       withTimezone: true,
     }),
     processingDurationSeconds: integer("processing_duration_seconds"),
+    polygonMode: text("polygon_mode").notNull().default("automatic"),
     polygonCoordinates: jsonb("polygon_coordinates").$type<number[][]>(),
     imageCount: integer("image_count").notNull().default(0),
     acceptedImageCount: integer("accepted_image_count").notNull().default(0),

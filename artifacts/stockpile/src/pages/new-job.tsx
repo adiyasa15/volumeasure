@@ -22,6 +22,7 @@ const formSchema = z.object({
   materialType: z.enum(["sand", "soil", "coal"]),
   sourceType: z.enum(["drone", "smartphone", "dslr"]),
   precisionLevel: z.enum(["low", "medium", "high"]),
+  polygonMode: z.enum(["automatic", "manual"]).default("automatic"),
   notes: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
@@ -46,6 +47,7 @@ export default function NewJob() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: `Measurement ${new Date().toISOString().split('T')[0]}`,
+      polygonMode: "automatic",
       materialType: "sand",
       sourceType: "drone",
       precisionLevel: "medium",
@@ -149,6 +151,7 @@ export default function NewJob() {
           : undefined;
       const payload = {
         ...values,
+        polygonMode: values.polygonMode,
         latitude: lat || undefined,
         longitude: lng || undefined,
         images: images.map(img => ({
@@ -189,10 +192,38 @@ export default function NewJob() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">New Measurement</h1>
-        <p className="text-muted-foreground">Upload imagery and configure a new volumetric calculation job.</p>
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">New Measurement</h1>
+          <p className="text-muted-foreground">Upload imagery and configure a new volumetric calculation job.</p>
+        </div>
+        <div className="flex items-center gap-1 bg-card/50 border border-border/50 rounded-lg p-1 self-start sm:self-auto shrink-0">
+          <span className="text-[10px] font-mono uppercase text-muted-foreground px-2">Polygon</span>
+          {(["automatic", "manual"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => form.setValue("polygonMode", mode)}
+              className={`px-3 py-1 rounded text-xs font-mono uppercase transition-colors ${
+                form.watch("polygonMode") === mode
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
       </div>
+      {form.watch("polygonMode") === "manual" && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-primary/30 bg-primary/5 text-sm">
+          <span className="mt-0.5 text-primary font-mono uppercase text-xs font-bold shrink-0">Manual Mode</span>
+          <span className="text-muted-foreground text-xs leading-relaxed">
+            After photogrammetry completes you will be prompted to draw your stockpile boundary
+            directly on the result map before volume is calculated.
+          </span>
+        </div>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
