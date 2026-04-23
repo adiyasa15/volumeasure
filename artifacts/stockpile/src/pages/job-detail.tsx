@@ -162,16 +162,17 @@ export default function JobDetail() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {needsManualPolygon && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 px-4 py-3 rounded-lg border border-primary/40 bg-primary/10">
-          <div className="flex-1">
-            <p className="font-mono uppercase text-sm font-bold text-primary">Draw Measurement Polygon</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Photogrammetry is complete. Draw your stockpile boundary on the map to calculate volume.
+        <div className="flex flex-col gap-3 px-4 py-4 rounded-lg border border-primary/50 bg-primary/10">
+          <div>
+            <p className="font-mono uppercase text-sm font-bold text-primary tracking-wide">Draw Measurement Polygon</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Processing is complete. Draw your stockpile boundary on the map below to calculate volume and area.
             </p>
           </div>
           <Button
-            size="sm"
-            className="font-mono uppercase text-xs shrink-0"
+            size="default"
+            variant="default"
+            className="font-mono uppercase text-xs w-full sm:w-auto self-start"
             onClick={() => setPolygonDrawerOpen(true)}
           >
             Draw Polygon &amp; Measure Volume
@@ -319,22 +320,11 @@ export default function JobDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0 flex-1 min-h-[400px] relative bg-secondary/20">
-              {job.orthophotoUrl && isCompleted ? (
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <img 
-                    src={job.orthophotoUrl} 
-                    alt="Orthophoto map" 
-                    className="max-w-full max-h-full object-contain rounded border border-border/50 shadow-2xl"
-                  />
-                  <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur border border-border/50 p-2 rounded text-xs font-mono uppercase">
-                    Generated Orthomosaic
-                  </div>
-                </div>
-              ) : job.latitude && job.longitude ? (
+              {job.latitude && job.longitude ? (
                 <div className="absolute inset-0">
-                  <MapContainer 
-                    center={[job.latitude, job.longitude]} 
-                    zoom={18} 
+                  <MapContainer
+                    center={[job.latitude, job.longitude]}
+                    zoom={18}
                     scrollWheelZoom={true}
                     style={{ height: '100%', width: '100%', zIndex: 1 }}
                   >
@@ -342,6 +332,14 @@ export default function JobDetail() {
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
+                    {job.orthophotoUrl === "tiles_ready" && job.webodmTaskId && isCompleted && (
+                      <TileLayer
+                        url={`/api/jobs/${job.id}/tiles/{z}/{x}/{y}`}
+                        attribution="Orthophoto &copy; PileMetric"
+                        opacity={0.9}
+                        crossOrigin="use-credentials"
+                      />
+                    )}
                     <Marker position={[job.latitude, job.longitude]}>
                       <Popup className="font-mono">
                         {job.name}<br/>
@@ -350,14 +348,19 @@ export default function JobDetail() {
                       </Popup>
                     </Marker>
                   </MapContainer>
+                  {job.orthophotoUrl === "tiles_ready" && isCompleted && (
+                    <div className="absolute bottom-4 left-4 z-[400] bg-background/90 backdrop-blur border border-primary/30 px-2 py-1 rounded text-[10px] font-mono uppercase text-primary pointer-events-none">
+                      Processed Orthophoto
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
                   <MapPin className="h-12 w-12 mb-4 opacity-20" />
                   <p className="font-mono uppercase text-sm font-bold">No Spatial Data</p>
                   <p className="text-sm mt-1 max-w-sm">
-                    {isProcessing 
-                      ? "Orthophoto will be available once processing completes." 
+                    {isProcessing
+                      ? "Orthophoto will be available once processing completes."
                       : "No GPS coordinates were found in the uploaded imagery and none were provided manually."}
                   </p>
                 </div>

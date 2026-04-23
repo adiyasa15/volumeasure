@@ -94,3 +94,28 @@ export async function getTask(uuid: string): Promise<WebodmTask | null> {
     return null;
   }
 }
+
+/**
+ * Proxy a single orthophoto tile for the given task UUID.
+ * Returns a Buffer with PNG image data, or null on failure.
+ */
+export async function fetchOrthophotoTile(
+  uuid: string,
+  z: string,
+  x: string,
+  y: string,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  if (!token()) return null;
+  try {
+    const res = await call(
+      `/api/projects/init/task/${uuid}/orthophoto/tiles/${z}/${x}/${y}.png`,
+    );
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    const ct = res.headers.get("content-type") || "image/png";
+    return { buffer: Buffer.from(ab), contentType: ct };
+  } catch (err) {
+    logger.error({ err, uuid, z, x, y }, "WebODM tile proxy error");
+    return null;
+  }
+}

@@ -9,7 +9,7 @@ import {
   RefreshJobParams,
 } from "@workspace/api-zod";
 import { rowToJob } from "../lib/jobMapper";
-import { createTaskInit, getTask, statusFromCode } from "../lib/webodm";
+import { createTaskInit, getTask, statusFromCode, fetchOrthophotoTile } from "../lib/webodm";
 
 interface AuthedRequest extends Request {
   userId?: string;
@@ -155,6 +155,7 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   let completedAt = row.completedAt;
   let nextDuration = row.processingDurationSeconds;
   let nextPolygon = row.polygonCoordinates as number[][] | null;
+  let nextOrthophotoUrl = row.orthophotoUrl;
 
   const isManualMode = row.polygonMode === "manual";
 
@@ -176,6 +177,10 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         }
         if (!nextPolygon) {
           nextPolygon = synthesizePolygon(row.latitude, row.longitude);
+        }
+        // Signal that orthophoto tiles are ready from processing
+        if (!nextOrthophotoUrl) {
+          nextOrthophotoUrl = "tiles_ready";
         }
       }
     }
@@ -212,6 +217,7 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
       progress: nextProgress,
       volumeM3: nextVolume,
       areaSqm: nextArea,
+      orthophotoUrl: nextOrthophotoUrl,
       completedAt,
       processingDurationSeconds: nextDuration,
       polygonCoordinates: nextPolygon,
@@ -220,6 +226,34 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
     .where(eq(jobsTable.id, row.id))
     .returning();
   res.json(rowToJob(updated));
+});
+
+/**
+ * Proxy orthophoto map tiles from the processing service.
+ * Only available for jobs that completed with real photogrammetry processing.
+ */
+router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
+  const { id, z, x, y } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!row || !row.webodmTaskId || row.orthophotoUrl !== "tiles_ready") {
+    res.status(404).end();
+    return;
+  }
+
+  const tile = await fetchOrthophotoTile(row.webodmTaskId, z, x, y);
+  if (!tile) {
+    res.status(404).end();
+    return;
+  }
+
+  res.setHeader("Content-Type", tile.contentType);
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.end(tile.buffer);
 });
 
 /**
