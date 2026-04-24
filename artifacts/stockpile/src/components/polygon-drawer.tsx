@@ -8,7 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapContainer, TileLayer, Polygon, useMapEvents, useMap } from "react-leaflet";
+import { Slider } from "@/components/ui/slider";
+import { MapContainer, TileLayer, ImageOverlay, Polygon, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import {
   Trash2,
@@ -20,6 +21,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Layers,
 } from "lucide-react";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -80,9 +82,19 @@ function DotMarkers({ positions }: { positions: LatLng[] }) {
   return null;
 }
 
-// ── Map fit on open ───────────────────────────────────────────────────────────
+// ── Map fit + bounds fetch ────────────────────────────────────────────────────
 
-function FitOnOpen({ jobId, open }: { jobId: string; open: boolean }) {
+type OrthophotoBounds = [[number, number], [number, number]]; // [[south,west],[north,east]]
+
+function FitOnOpen({
+  jobId,
+  open,
+  onBounds,
+}: {
+  jobId: string;
+  open: boolean;
+  onBounds: (b: OrthophotoBounds) => void;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -95,7 +107,9 @@ function FitOnOpen({ jobId, open }: { jobId: string; open: boolean }) {
         const data = (await res.json()) as { bounds?: [number, number, number, number] };
         if (!data?.bounds) return;
         const [west, south, east, north] = data.bounds;
-        map.flyToBounds([[south, west], [north, east]], {
+        const leafletBounds: OrthophotoBounds = [[south, west], [north, east]];
+        onBounds(leafletBounds);
+        map.flyToBounds(leafletBounds, {
           padding: [32, 32],
           maxZoom: 20,
           animate: true,
@@ -105,7 +119,6 @@ function FitOnOpen({ jobId, open }: { jobId: string; open: boolean }) {
         // silent
       }
     }, 300);
-
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, jobId]);
@@ -138,14 +151,20 @@ export function PolygonDrawer({
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
   const [result, setResult] = useState<DrawerVolumeResult | null>(null);
+  const [orthoBounds, setOrthoBounds] = useState<OrthophotoBounds | null>(null);
+  const [orthoOpacity, setOrthoOpacity] = useState(0.8);
 
   const defaultCenter: LatLng = center ?? [0, 0];
   const isSaving = externalSaving || isCalculating;
+
+  // The orthophoto JPEG URL — served by our API with auth cookie
+  const orthoUrl = `/api/jobs/${jobId}/orthophoto-jpeg`;
 
   useEffect(() => {
     if (!open) {
       setVertices([]);
       setResult(null);
+      setOrthoBounds(null);
     }
   }, [open]);
 
@@ -199,46 +218,34 @@ export function PolygonDrawer({
 
   const polyPositions: LatLng[] = vertices.length >= 2 ? [...vertices, vertices[0]] : vertices;
 
-  const esriBannerUrl = (() => {
-    if (!center) return null;
-    const [lat, lng] = center;
-    const buf = 0.004;
-    const west  = (lng - buf).toFixed(6);
-    const east  = (lng + buf).toFixed(6);
-    const south = (lat - buf * 0.5).toFixed(6);
-    const north = (lat + buf * 0.5).toFixed(6);
-    return (
-      `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export` +
-      `?bbox=${west},${south},${east},${north}&bboxSR=4326&size=760,120&imageSR=4326&format=jpg&f=image`
-    );
-  })();
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
 
-        {/* ── ESRI satellite banner ──────────────────────────────────── */}
-        {esriBannerUrl && (
-          <div className="relative w-full h-[90px] overflow-hidden shrink-0 bg-muted/20">
-            <img
-              src={esriBannerUrl}
-              alt="Satellite overview"
-              className="absolute inset-0 w-full h-full object-cover"
-              draggable={false}
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent" />
-            <div className="absolute inset-x-0 top-0 px-6 pt-4">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-white/70">
-                Esri World Imagery · Site Overview
+        {/* ── Orthophoto banner ──────────────────────────────────────────── */}
+        <div className="relative w-full h-[90px] overflow-hidden shrink-0 bg-muted/20">
+          <img
+            src={orthoUrl}
+            alt="NodeODM orthophoto"
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent" />
+          <div className="absolute inset-x-0 top-0 px-6 pt-4">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-white/70 flex items-center gap-1.5">
+              <Layers className="h-2.5 w-2.5" />
+              NodeODM Orthophoto · Survey Overview
+            </p>
+            {center && (
+              <p className="text-[10px] font-mono text-white/50 mt-0.5">
+                {center[0].toFixed(5)}°, {center[1].toFixed(5)}°
               </p>
-              {center && (
-                <p className="text-[10px] font-mono text-white/50 mt-0.5">
-                  {center[0].toFixed(5)}°, {center[1].toFixed(5)}°
-                </p>
-              )}
-            </div>
+            )}
           </div>
-        )}
+        </div>
 
         <DialogHeader className="px-6 pt-4 pb-3">
           <DialogTitle className="font-mono uppercase tracking-wider">
@@ -250,7 +257,7 @@ export function PolygonDrawer({
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Toolbar ─────────────────────────────────────────────────── */}
+        {/* ── Toolbar ─────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 flex-wrap px-6 py-2 border-b border-border/40 bg-card/30">
           <Button
             type="button"
@@ -272,6 +279,27 @@ export function PolygonDrawer({
           >
             <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear
           </Button>
+
+          {/* Orthophoto opacity slider */}
+          {orthoBounds && (
+            <div className="flex items-center gap-2 ml-2">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-[10px] font-mono text-muted-foreground uppercase whitespace-nowrap">
+                Ortho
+              </span>
+              <Slider
+                value={[orthoOpacity]}
+                onValueChange={([v]) => setOrthoOpacity(v)}
+                min={0}
+                max={1}
+                step={0.05}
+                className="w-20"
+              />
+              <span className="text-[10px] font-mono text-muted-foreground w-7 text-right">
+                {Math.round(orthoOpacity * 100)}%
+              </span>
+            </div>
+          )}
 
           <div className="flex-1" />
 
@@ -302,7 +330,7 @@ export function PolygonDrawer({
           </Button>
         </div>
 
-        {/* ── Map ─────────────────────────────────────────────────────── */}
+        {/* ── Map ─────────────────────────────────────────────────────────── */}
         <div className="relative flex-1 min-h-0" style={{ height: "400px" }}>
           {center ? (
             <MapContainer
@@ -312,13 +340,25 @@ export function PolygonDrawer({
               scrollWheelZoom
               style={{ height: "100%", width: "100%" }}
             >
+              {/* Satellite basemap */}
               <TileLayer
                 attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar'
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                 maxNativeZoom={19}
                 maxZoom={23}
               />
-              <FitOnOpen jobId={jobId} open={open} />
+
+              {/* NodeODM orthophoto overlay — georeferenced over the survey area */}
+              {orthoBounds && (
+                <ImageOverlay
+                  url={orthoUrl}
+                  bounds={orthoBounds}
+                  opacity={orthoOpacity}
+                  zIndex={10}
+                />
+              )}
+
+              <FitOnOpen jobId={jobId} open={open} onBounds={setOrthoBounds} />
               {!result && <ClickCapture onMapClick={handleClick} />}
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
@@ -341,7 +381,7 @@ export function PolygonDrawer({
           )}
         </div>
 
-        {/* ── Result panel ────────────────────────────────────────────── */}
+        {/* ── Result panel ────────────────────────────────────────────────── */}
         {result && (
           <div className="px-6 py-4 border-t border-border/40 bg-card/50">
             <div className="flex items-center gap-2 mb-3">
@@ -430,7 +470,7 @@ export function PolygonDrawer({
           </div>
         )}
 
-        {/* ── Footer ──────────────────────────────────────────────────── */}
+        {/* ── Footer ──────────────────────────────────────────────────────── */}
         <DialogFooter className="px-6 py-3 border-t border-border/40 bg-card/20">
           {result ? (
             <Button
