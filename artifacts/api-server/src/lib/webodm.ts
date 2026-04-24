@@ -250,6 +250,52 @@ export function orthophotoAssetUrl(uuid: string): string {
   return `${NODE_BASE}/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.tif?token=${encodeURIComponent(t)}`;
 }
 
+/**
+ * Download odm_orthophoto.tif from NodeODM and convert it to a JPEG thumbnail
+ * using sharp (native libvips — much faster than client-side georaster parsing).
+ * Returns a JPEG Buffer sized ≤800×800 px, or null on failure.
+ */
+export async function fetchOrthophotoJpeg(uuid: string): Promise<Buffer | null> {
+  if (!token()) return null;
+
+  let arrayBuffer: ArrayBuffer;
+  try {
+    const res = await fetch(qs(`/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.tif`));
+    if (!res.ok) {
+      logger.warn({ uuid, status: res.status }, "Orthophoto GeoTIFF download failed");
+      return null;
+    }
+    // Guard: NodeODM returns JSON errors with HTTP 200 when assets have expired
+    const ct = res.headers.get("Content-Type") ?? "";
+    if (ct.includes("application/json") || ct.includes("text/")) {
+      logger.warn({ uuid, contentType: ct }, "Orthophoto response is not a TIFF (assets expired?)");
+      return null;
+    }
+    arrayBuffer = await res.arrayBuffer();
+    // Minimum sanity check: a GeoTIFF is at least a few KB
+    if (arrayBuffer.byteLength < 1024) {
+      logger.warn({ uuid, bytes: arrayBuffer.byteLength }, "Orthophoto response too small to be a valid TIFF");
+      return null;
+    }
+  } catch (err) {
+    logger.error({ err, uuid }, "Orthophoto fetch error");
+    return null;
+  }
+
+  try {
+    const { default: sharp } = await import("sharp");
+    const jpegBuffer = await sharp(Buffer.from(arrayBuffer), { limitInputPixels: false })
+      .flatten({ background: "#ffffff" }) // alpha → white (JPEG has no transparency)
+      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+    return jpegBuffer;
+  } catch (err) {
+    logger.error({ err, uuid }, "sharp TIFF→JPEG conversion failed");
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // DSM-based cut / fill volume calculation
 // ---------------------------------------------------------------------------

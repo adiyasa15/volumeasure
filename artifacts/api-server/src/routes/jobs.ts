@@ -22,6 +22,7 @@ import {
   deleteTask,
   orthophotoAssetUrl,
   calculateVolumeFromDSM,
+  fetchOrthophotoJpeg,
 } from "../lib/webodm";
 import multer from "multer";
 
@@ -484,6 +485,38 @@ router.get("/:id/orthophoto", async (req: AuthedRequest, res) => {
 
   if (!upstream.body) { res.end(); return; }
   Readable.fromWeb(upstream.body as import("stream/web").ReadableStream).pipe(res);
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id/orthophoto-jpeg — JPEG thumbnail of the orthophoto
+// Downloads odm_orthophoto.tif from NodeODM, converts with sharp server-side.
+// Much faster for PDF report embedding than client-side GeoTIFF parsing.
+// ---------------------------------------------------------------------------
+router.get("/:id/orthophoto-jpeg", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .limit(1);
+
+  if (!row) { res.status(404).end(); return; }
+  if (!row.webodmTaskId) { res.status(404).json({ error: "No NodeODM task" }); return; }
+  if (row.orthophotoUrl !== "tiles_ready") {
+    res.status(404).json({ error: "Orthophoto not ready yet" });
+    return;
+  }
+
+  const jpegBuffer = await fetchOrthophotoJpeg(row.webodmTaskId);
+  if (!jpegBuffer) {
+    res.status(502).json({ error: "Orthophoto JPEG conversion failed" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "image/jpeg");
+  res.setHeader("Cache-Control", "private, max-age=86400"); // cache 24 h per job
+  res.setHeader("Content-Length", String(jpegBuffer.byteLength));
+  res.status(200).end(jpegBuffer);
 });
 
 // ---------------------------------------------------------------------------

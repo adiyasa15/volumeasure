@@ -1,6 +1,5 @@
 import { jsPDF } from "jspdf";
 import type { Job } from "@workspace/api-client-react";
-import parseGeoraster from "georaster";
 
 function formatBytes(bytes?: number | null): string {
   if (bytes == null) return "—";
@@ -92,51 +91,25 @@ function renderPolygon(coords: number[][] | null | undefined): string | null {
 }
 
 /**
- * Fetches the NodeODM orthophoto GeoTIFF through the API, renders all RGB bands
- * to an off-screen canvas, and returns a JPEG data URL for PDF embedding.
- * Returns null if the orthophoto is not available or the fetch fails.
+ * Fetches the orthophoto as a ready-made JPEG from the server-side endpoint.
+ * The server downloads odm_orthophoto.tif from NodeODM and converts it with
+ * sharp (native libvips) — orders of magnitude faster than client-side georaster.
+ * Returns a JPEG data URL, or null if the orthophoto is unavailable.
  */
 async function fetchOrthophotoDataUrl(jobId: string): Promise<string | null> {
   try {
-    const res = await fetch(`/api/jobs/${jobId}/orthophoto`, { credentials: "include" });
+    const res = await fetch(`/api/jobs/${jobId}/orthophoto-jpeg`, {
+      credentials: "include",
+    });
     if (!res.ok) return null;
 
-    const arrayBuffer = await res.arrayBuffer();
-    const georaster = await parseGeoraster(arrayBuffer);
-
-    const { width, height, values, noDataValue } = georaster;
-    if (!values || values.length < 3) return null;
-
-    const OUT = 512;
-    const canvas = document.createElement("canvas");
-    canvas.width = OUT;
-    canvas.height = OUT;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    const imageData = ctx.createImageData(OUT, OUT);
-    const bands = values as number[][][];
-
-    for (let py = 0; py < OUT; py++) {
-      const gy = Math.min(height - 1, Math.floor((py / OUT) * height));
-      for (let px = 0; px < OUT; px++) {
-        const gx = Math.min(width - 1, Math.floor((px / OUT) * width));
-        const idx = (py * OUT + px) * 4;
-        const r = bands[0]?.[gy]?.[gx] ?? 0;
-        const g = bands[1]?.[gy]?.[gx] ?? 0;
-        const b = bands[2]?.[gy]?.[gx] ?? 0;
-        const a = bands[3]?.[gy]?.[gx] ?? 255;
-        const isNoData =
-          noDataValue != null && (r === noDataValue || a === 0);
-        imageData.data[idx]     = isNoData ? 0 : Math.max(0, Math.min(255, r));
-        imageData.data[idx + 1] = isNoData ? 0 : Math.max(0, Math.min(255, g));
-        imageData.data[idx + 2] = isNoData ? 0 : Math.max(0, Math.min(255, b));
-        imageData.data[idx + 3] = isNoData ? 0 : Math.max(0, Math.min(255, a));
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.88);
+    const blob = await res.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }

@@ -23,7 +23,8 @@
     "multer": "^2.1.1",
     "pino": "^9",
     "pino-http": "^10",
-    "proj4": "^2.20.8"
+    "proj4": "^2.20.8",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
@@ -31,6 +32,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
     "@types/proj4": "^2.19.0",
+    "@types/sharp": "^0.32.0",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13",

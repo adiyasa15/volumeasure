@@ -72,6 +72,9 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  - sharp
+  - '@img/sharp-linux-x64'
+  - '@img/sharp-libvips-linux-x64'
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
