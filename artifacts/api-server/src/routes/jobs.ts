@@ -18,6 +18,7 @@ import {
   fetchOrthophotoTile,
   fetchOrthophotoBounds,
   uploadTaskImage,
+  uploadGcpFile,
   commitTask,
   deleteTask,
   orthophotoAssetUrl,
@@ -245,6 +246,16 @@ router.post("/:id/commit", async (req: AuthedRequest, res) => {
   if (!row.webodmTaskId) {
     res.status(400).json({ error: "No NodeODM task associated with this job (demo mode)" });
     return;
+  }
+
+  // If the job has a GCP file, upload it now before committing.
+  // NodeODM detects the GCP file by its filename "gcp_list.txt" in the upload
+  // endpoint — it cannot be sent via the init call.
+  if (row.gcpFileContent) {
+    const gcpOk = await uploadGcpFile(row.webodmTaskId, row.gcpFileContent);
+    if (!gcpOk) {
+      logger.warn({ jobId: row.id }, "GCP file upload failed — proceeding without GCP");
+    }
   }
 
   const ok = await commitTask(row.webodmTaskId);

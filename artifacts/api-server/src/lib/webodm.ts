@@ -60,18 +60,17 @@ export async function createTaskInit(
       { name: "orthophoto-resolution", value: 5 },
       { name: "feature-quality", value: "high" },
     ];
+    // When a GCP file is provided, tell NodeODM to trust GCP over GPS EXIF
     if (opts.gcpFile) {
-      options.push({ name: "use-exif-size", value: false });
+      options.push({ name: "force-gps", value: false });
     }
 
     const fd = new FormData();
     fd.append("name", name);
     fd.append("options", JSON.stringify(options));
-
-    if (opts.gcpFile) {
-      const blob = new Blob([opts.gcpFile.content], { type: "text/plain" });
-      fd.append("gcp", blob, opts.gcpFile.name || "gcp_list.txt");
-    }
+    // NOTE: GCP file is NOT uploaded here. NodeODM ignores files in the init
+    // call. The GCP file must be uploaded via /task/new/upload/:uuid with the
+    // filename "gcp_list.txt" before committing. See uploadGcpFile().
 
     const res = await call("/task/new/init", { method: "POST", body: fd });
     if (!res.ok) {
@@ -115,6 +114,37 @@ export async function uploadTaskImage(
     return true;
   } catch (err) {
     logger.error({ err, uuid, fileName }, "NodeODM upload image error");
+    return false;
+  }
+}
+
+/**
+ * Upload a GCP file to an existing NodeODM task.
+ *
+ * NodeODM identifies the GCP file by its filename — it MUST be named
+ * "gcp_list.txt". The file is sent via the same /task/new/upload/:uuid
+ * endpoint used for images, using the "images" field.
+ *
+ * This must be called BEFORE commitTask().
+ */
+export async function uploadGcpFile(
+  uuid: string,
+  content: string,
+): Promise<boolean> {
+  if (!token()) return false;
+  try {
+    const blob = new Blob([content], { type: "text/plain" });
+    const fd = new FormData();
+    fd.append("images", blob, "gcp_list.txt");
+    const res = await call(`/task/new/upload/${uuid}`, { method: "POST", body: fd });
+    if (!res.ok) {
+      logger.warn({ uuid, status: res.status }, "NodeODM GCP file upload failed");
+      return false;
+    }
+    logger.info({ uuid }, "GCP file uploaded to NodeODM task");
+    return true;
+  } catch (err) {
+    logger.error({ err, uuid }, "NodeODM GCP file upload error");
     return false;
   }
 }

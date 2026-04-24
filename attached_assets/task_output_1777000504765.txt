@@ -1,0 +1,767 @@
+[INFO] --optimize-disk-space is set, enabling --rerun-all
+[INFO] Initializing LGT Engine 4.2.0
+[INFO] =============================
+[INFO] 3d_tiles: False
+[INFO] align: None
+[INFO] auto_boundary: True
+[INFO] auto_boundary_distance: 0
+[INFO] bg_removal: False
+[INFO] boundary: {}
+[INFO] build_overviews: False
+[INFO] camera_lens: auto
+[INFO] cameras: {}
+[INFO] cog: True
+[INFO] copy_to: None
+[INFO] crop: 3
+[INFO] crs: utm
+[INFO] dem_euclidean_map: False
+[INFO] dem_resolution: 2.0
+[INFO] dsm: True
+[INFO] dtm: False
+[INFO] end_with: odm_postprocess
+[INFO] fast_orthophoto: False
+[INFO] feature_quality: high
+[INFO] feature_type: dspsift
+[INFO] force_gps: False
+[INFO] gcp: None
+[INFO] geo: None
+[INFO] gltf: True
+[INFO] gps_accuracy: 3
+[INFO] gps_z_offset: 0
+[INFO] ignore_gsd: False
+[INFO] matcher_neighbors: 8
+[INFO] matcher_order: 24
+[INFO] max_concurrency: 4
+[INFO] merge: all
+[INFO] mesh_octree_depth: 11
+[INFO] mesh_size: 0
+[INFO] min_num_features: 10000
+[INFO] name: dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc
+[INFO] no_gpu: False
+[INFO] optimize_disk_space: True
+[INFO] orthophoto_compression: DEFLATE
+[INFO] orthophoto_cutline: False
+[INFO] orthophoto_kmz: False
+[INFO] orthophoto_no_tiled: False
+[INFO] orthophoto_png: False
+[INFO] orthophoto_resolution: 5.0
+[INFO] pc_classify: False
+[INFO] pc_copc: False
+[INFO] pc_csv: False
+[INFO] pc_ept: True
+[INFO] pc_filter: 5
+[INFO] pc_las: False
+[INFO] pc_quality: medium
+[INFO] pc_sample: 0
+[INFO] pc_skip_geometric: False
+[INFO] primary_band: auto
+[INFO] project_path: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc
+[INFO] radiometric_calibration: none
+[INFO] report_units: auto
+[INFO] rerun: None
+[INFO] rerun_all: True
+[INFO] rerun_from: None
+[INFO] rolling_shutter: False
+[INFO] rolling_shutter_readout: 0
+[INFO] sfm_algorithm: incremental
+[INFO] skip_3dmodel: False
+[INFO] skip_band_alignment: False
+[INFO] skip_orthophoto: False
+[INFO] skip_report: False
+[INFO] sky_removal: False
+[INFO] sm_cluster: None
+[INFO] sm_no_align: False
+[INFO] smrf_scalar: 1.25
+[INFO] smrf_slope: 0.15
+[INFO] smrf_threshold: 0.5
+[INFO] smrf_window: 18.0
+[INFO] split: 999999
+[INFO] split_image_groups: None
+[INFO] split_overlap: 150
+[INFO] texturing_data_term: area
+[INFO] texturing_regularization: fixed
+[INFO] texturing_single_material: False
+[INFO] texturing_skip_global_seam_leveling: False
+[INFO] tiles: False
+[INFO] use_3dmesh: False
+[INFO] use_exif: False
+[INFO] use_fixed_camera_params: False
+[INFO] video_limit: 500
+[INFO] video_resolution: 4000
+[INFO] Rerun all is set. Cleaning up previous folders
+[INFO] ============ Dataset =============
+[INFO] Scanning: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/images
+[INFO] Loading 21 images
+[INFO] Wrote images database: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/images.json
+[INFO] Found 21 usable images
+[INFO] CRS set to EPSG:32748
+[INFO] ============= Split ==============
+[INFO] Normal dataset, will process all at once.
+[INFO] ============= Merge ==============
+[INFO] Normal dataset, nothing to merge.
+[INFO] ============ Opensfm =============
+[INFO] Maximum photo dimensions: 3264px
+[INFO] Photo dimensions for feature extraction: 1632px
+[WARNING] Enough geotagged images, ignoring --matcher-order
+[INFO] Altitude data detected, enabling it for GPS alignment
+[INFO] Matcher neighbors: 8
+[INFO] Matcher graph rounds: 50
+[INFO] Wrote reference_lla.json
+[INFO] Planning to use 6120.73125 MB of RAM for both processing queue and parallel processing.
+[INFO] Scale-space expected size of a single image : 60.48468017578125 MB
+[INFO] Expecting to queue at most 167 images while parallel processing of 4 images.
+[INFO] Finished reading images
+[INFO] Found 3132 features for 20260424_072647.jpg (DSPSIFT)
+[INFO] Found 3483 features for 20260424_072617.jpg (DSPSIFT)
+[INFO] Found 3484 features for 20260424_072431.jpg (DSPSIFT)
+[INFO] Found 3772 features for 20260424_072500.jpg (DSPSIFT)
+[INFO] Found 3782 features for 20260424_072624.jpg (DSPSIFT)
+[INFO] Found 3972 features for 20260424_072611.jpg (DSPSIFT)
+[INFO] Found 3301 features for 20260424_072421.jpg (DSPSIFT)
+[INFO] Found 3278 features for 20260424_072655.jpg (DSPSIFT)
+[INFO] Found 3091 features for 20260424_072521.jpg (DSPSIFT)
+[INFO] Found 3504 features for 20260424_072636.jpg (DSPSIFT)
+[INFO] Found 2920 features for 20260424_072528.jpg (DSPSIFT)
+[INFO] Found 3449 features for 20260424_072508.jpg (DSPSIFT)
+[INFO] Found 2951 features for 20260424_072451.jpg (DSPSIFT)
+[INFO] Found 4300 features for 20260424_072630.jpg (DSPSIFT)
+[INFO] Found 4020 features for 20260424_072559.jpg (DSPSIFT)
+[INFO] Found 3187 features for 20260424_072514.jpg (DSPSIFT)
+[INFO] Found 3164 features for 20260424_072542.jpg (DSPSIFT)
+[INFO] Found 3023 features for 20260424_072414.jpg (DSPSIFT)
+[INFO] Found 3664 features for 20260424_072704.jpg (DSPSIFT)
+[INFO] Found 3502 features for 20260424_072440.jpg (DSPSIFT)
+[INFO] Found 3182 features for 20260424_072536.jpg (DSPSIFT)
+[INFO] Matching 142 image pairs
+[INFO] Computing pair matching with 4 processes
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072655.jpg: 8 NO
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072514.jpg: 10 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072536.jpg: 9 NO
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072704.jpg: 87 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072440.jpg: 8 NO
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072559.jpg: 18 NO
+[INFO] Matching 20260424_072542.jpg <=> 20260424_072414.jpg: 207 OK
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072617.jpg: 76 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072514.jpg: 109 OK
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072542.jpg: 15 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072617.jpg: 396 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072542.jpg: 70 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072440.jpg: 12 NO
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072704.jpg: 9 NO
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072655.jpg: 49 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072514.jpg: 26 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072536.jpg: 102 OK
+[INFO] Matching 20260424_072542.jpg <=> 20260424_072611.jpg: 143 OK
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072624.jpg: 42 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072559.jpg: 67 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072630.jpg: 82 OK
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072630.jpg: 99 OK
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072647.jpg: 19 NO
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072542.jpg: 17 NO
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072451.jpg: 20 NO
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072451.jpg: 12 NO
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072655.jpg: 121 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072655.jpg: 68 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072528.jpg: 18 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072542.jpg: 167 OK
+[INFO] Matching 20260424_072431.jpg <=> 20260424_072542.jpg: 50 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072451.jpg: 20 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072559.jpg: 58 OK
+[INFO] Matching 20260424_072500.jpg <=> 20260424_072414.jpg: 20 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072704.jpg: 40 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072559.jpg: 81 OK
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072500.jpg: 9 NO
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072451.jpg: 41 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072704.jpg: 102 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072630.jpg: 27 NO
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072624.jpg: 84 OK
+[INFO] Matching 20260424_072431.jpg <=> 20260424_072617.jpg: 158 OK
+[INFO] Matching 20260424_072611.jpg <=> 20260424_072500.jpg: 10 NO
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072624.jpg: 8 NO
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072414.jpg: 27 NO
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072559.jpg: 49 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072508.jpg: 13 NO
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072414.jpg: 11 NO
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072431.jpg: 45 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072630.jpg: 14 NO
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072559.jpg: 15 NO
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072704.jpg: 166 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072414.jpg: 28 NO
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072704.jpg: 47 OK
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072611.jpg: 20 NO
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072636.jpg: 241 OK
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072630.jpg: 49 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072431.jpg: 365 OK
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072647.jpg: 386 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072636.jpg: 46 OK
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072451.jpg: 86 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072647.jpg: 39 OK
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072451.jpg: 146 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072611.jpg: 31 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072630.jpg: 79 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072624.jpg: 41 OK
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072414.jpg: 33 NO
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072500.jpg: 25 NO
+[INFO] Matching 20260424_072611.jpg <=> 20260424_072414.jpg: 167 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072500.jpg: 27 NO
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072414.jpg: 219 OK
+[INFO] Matching 20260424_072630.jpg <=> 20260424_072451.jpg: 121 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072636.jpg: 15 NO
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072528.jpg: 148 OK
+[INFO] Matching 20260424_072647.jpg <=> 20260424_072451.jpg: 66 OK
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072431.jpg: 18 NO
+[INFO] Matching 20260424_072617.jpg <=> 20260424_072647.jpg: 55 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072647.jpg: 9 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072636.jpg: 166 OK
+[INFO] Matching 20260424_072617.jpg <=> 20260424_072630.jpg: 128 OK
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072630.jpg: 433 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072611.jpg: 130 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072451.jpg: 6 NO
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072431.jpg: 93 OK
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072647.jpg: 105 OK
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072630.jpg: 361 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072636.jpg: 16 NO
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072500.jpg: 22 NO
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072440.jpg: 5 NO
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072647.jpg: 32 OK
+[INFO] Matching 20260424_072500.jpg <=> 20260424_072617.jpg: 29 NO
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072636.jpg: 88 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072514.jpg: 18 NO
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072611.jpg: 168 OK
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072647.jpg: 153 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072636.jpg: 61 OK
+[INFO] Matching 20260424_072647.jpg <=> 20260424_072630.jpg: 255 OK
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072536.jpg: 31 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072611.jpg: 13 NO
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072536.jpg: 21 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072704.jpg: 269 OK
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072542.jpg: 31 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072630.jpg: 29 NO
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072414.jpg: 9 NO
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072440.jpg: 32 NO
+[INFO] Matching 20260424_072542.jpg <=> 20260424_072451.jpg: 13 NO
+[INFO] Matching 20260424_072617.jpg <=> 20260424_072414.jpg: 98 OK
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072617.jpg: 92 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072536.jpg: 49 OK
+[INFO] Matching 20260424_072431.jpg <=> 20260424_072500.jpg: 22 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072414.jpg: 41 OK
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072611.jpg: 28 NO
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072617.jpg: 48 OK
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072559.jpg: 97 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072431.jpg: 11 NO
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072647.jpg: 727 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072431.jpg: 39 OK
+[INFO] Matching 20260424_072611.jpg <=> 20260424_072451.jpg: 16 NO
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072617.jpg: 167 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072514.jpg: 131 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072414.jpg: 108 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072611.jpg: 57 OK
+[INFO] Matching 20260424_072542.jpg <=> 20260424_072630.jpg: 5 NO
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072704.jpg: 464 OK
+[INFO] Matching 20260424_072528.jpg <=> 20260424_072421.jpg: 44 OK
+[INFO] Matching 20260424_072431.jpg <=> 20260424_072414.jpg: 67 OK
+[INFO] Matching 20260424_072704.jpg <=> 20260424_072542.jpg: 69 OK
+[INFO] Matching 20260424_072521.jpg <=> 20260424_072611.jpg: 36 OK
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072611.jpg: 964 OK
+[INFO] Matching 20260424_072508.jpg <=> 20260424_072542.jpg: 27 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072636.jpg: 33 NO
+[INFO] Matching 20260424_072542.jpg <=> 20260424_072500.jpg: 9 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072647.jpg: 42 OK
+[INFO] Matching 20260424_072431.jpg <=> 20260424_072611.jpg: 60 OK
+[INFO] Matching 20260424_072421.jpg <=> 20260424_072704.jpg: 24 NO
+[INFO] Matching 20260424_072514.jpg <=> 20260424_072451.jpg: 26 NO
+[INFO] Matching 20260424_072624.jpg <=> 20260424_072440.jpg: 169 OK
+[INFO] Matching 20260424_072536.jpg <=> 20260424_072630.jpg: 12 NO
+[INFO] Matching 20260424_072559.jpg <=> 20260424_072500.jpg: 17 NO
+[INFO] Matching 20260424_072636.jpg <=> 20260424_072536.jpg: 8 NO
+[INFO] Matching 20260424_072655.jpg <=> 20260424_072451.jpg: 25 NO
+[INFO] Matching 20260424_072440.jpg <=> 20260424_072451.jpg: 136 OK
+[INFO] Matched 142 pairs (brown-brown: 142) in 2.600085457000006 seconds (0.018310463077464804 seconds/pair).
+[INFO] reading features
+[INFO] Merging features onto tracks
+[INFO] Good tracks: 4097
+[INFO] Starting incremental reconstruction
+[INFO] Starting reconstruction with 20260424_072559.jpg and 20260424_072611.jpg
+[INFO] Two-view 5-points reconstruction inliers (transposed=False): 886 / 892
+[INFO] Triangulated: 888
+[INFO] Removed outliers: 41
+[INFO] 20260424_072704.jpg resection inliers: 142 / 156
+[INFO] 20260424_072542.jpg resection inliers: 84 / 136
+[INFO] Removed outliers: 24
+[INFO] 20260424_072414.jpg resection inliers: 114 / 146
+[INFO] 20260424_072617.jpg resection inliers: 125 / 149
+[INFO] Removed outliers: 25
+[INFO] 20260424_072421.jpg resection inliers: 145 / 173
+[INFO] 20260424_072431.jpg resection inliers: 141 / 190
+[INFO] Removed outliers: 41
+[INFO] 20260424_072624.jpg resection inliers: 123 / 138
+[INFO] Re-triangulating
+[INFO] Removed outliers: 133
+[INFO] 20260424_072630.jpg resection inliers: 143 / 160
+[INFO] 20260424_072647.jpg resection inliers: 164 / 253
+[INFO] Removed outliers: 47
+[INFO] 20260424_072636.jpg resection inliers: 371 / 390
+[INFO] 20260424_072655.jpg resection inliers: 367 / 390
+[INFO] Removed outliers: 62
+[INFO] 20260424_072440.jpg resection inliers: 152 / 183
+[INFO] 20260424_072451.jpg resection inliers: 147 / 184
+[INFO] 20260424_072521.jpg resection inliers: 147 / 172
+[INFO] 20260424_072528.jpg resection inliers: 130 / 156
+[INFO] 20260424_072536.jpg resection inliers: 103 / 118
+[INFO] 20260424_072508.jpg resection inliers: 89 / 110
+[INFO] 20260424_072514.jpg resection inliers: 89 / 103
+[INFO] Removed outliers: 101
+[INFO] Reconstruction 0: 20 images, 3802 points
+[INFO] 1 partial reconstructions in total.
+[INFO] Exporting reconstruction stats
+[INFO] Updating /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/config.yaml
+[INFO] undistorted_image_max_size: 816
+[INFO] Undistorting /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm ...
+[INFO] Undistorting image 20260424_072636.jpg
+[INFO] Undistorting image 20260424_072647.jpg
+[INFO] Undistorting image 20260424_072655.jpg
+[INFO] Undistorting image 20260424_072704.jpg
+[INFO] Undistorting image 20260424_072431.jpg
+[INFO] Undistorting image 20260424_072421.jpg
+[INFO] Undistorting image 20260424_072514.jpg
+[INFO] Undistorting image 20260424_072508.jpg
+[INFO] Undistorting image 20260424_072528.jpg
+[INFO] Undistorting image 20260424_072617.jpg
+[INFO] Undistorting image 20260424_072630.jpg
+[INFO] Undistorting image 20260424_072521.jpg
+[INFO] Undistorting image 20260424_072451.jpg
+[INFO] Undistorting image 20260424_072559.jpg
+[INFO] Undistorting image 20260424_072624.jpg
+[INFO] Undistorting image 20260424_072542.jpg
+[INFO] Undistorting image 20260424_072536.jpg
+[INFO] Undistorting image 20260424_072440.jpg
+[INFO] Undistorting image 20260424_072611.jpg
+[INFO] Undistorting image 20260424_072414.jpg
+[INFO] ============ Openmvs =============
+[INFO] Depthmap resolution set to: 816px
+[INFO] Running dense reconstruction. This might take a while.
+[INFO] Estimating depthmaps
+[INFO] No nvidia-smi detected
+[INFO] Set the ROI by the estimated core points
+[INFO] Preparing images for dense reconstruction completed: 20 images (51ms)
+[INFO] Select neighbor views by weighting inside ROI points with 0.70
+[INFO] Selecting images for dense reconstruction completed: 20 images (1ms)
+
+Estimated depth-maps 1 (5.00%, 2s, ETA 51s)...
+Estimated depth-maps 3 (15.00%, 7s, ETA 40s)...
+Estimated depth-maps 4 (20.00%, 9s, ETA 38s)...
+Estimated depth-maps 5 (25.00%, 13s, ETA 39s)...
+Estimated depth-maps 6 (30.00%, 15s, ETA 35s)...
+Estimated depth-maps 8 (40.00%, 19s, ETA 28s)...
+Estimated depth-maps 9 (45.00%, 21s, ETA 26s)...
+Estimated depth-maps 10 (50.00%, 23s, ETA 23s)...
+Estimated depth-maps 11 (55.00%, 26s, ETA 21s)...
+Estimated depth-maps 12 (60.00%, 28s, ETA 19s)...
+Estimated depth-maps 13 (65.00%, 31s, ETA 17s)...
+Estimated depth-maps 15 (75.00%, 34s, ETA 11s)...
+Estimated depth-maps 16 (80.00%, 36s, ETA 9s)...
+Estimated depth-maps 20 (100%, 37s938ms)
+
+Geometric-consistent estimated depth-maps 4 (20.00%, 2s, ETA 10s)...
+Geometric-consistent estimated depth-maps 7 (35.00%, 4s, ETA 8s)...
+Geometric-consistent estimated depth-maps 11 (55.00%, 7s, ETA 5s)...
+Geometric-consistent estimated depth-maps 15 (75.00%, 9s, ETA 3s)...
+Geometric-consistent estimated depth-maps 20 (100%, 10s481ms)
+
+Geometric-consistent estimated depth-maps 4 (20.00%, 2s, ETA 10s)...
+Geometric-consistent estimated depth-maps 8 (40.00%, 5s, ETA 7s)...
+Geometric-consistent estimated depth-maps 11 (55.00%, 7s, ETA 5s)...
+Geometric-consistent estimated depth-maps 15 (75.00%, 9s, ETA 3s)...
+Geometric-consistent estimated depth-maps 20 (100%, 10s230ms)
+
+Fused depth-maps 20 (100%, 643ms)
+[INFO] Point-cloud trimmed to ROI: 128072 points removed (6ms)
+[INFO] Densifying point-cloud completed: 664206 points (59s395ms)
+[INFO] MEMORYINFO: {
+[INFO] 	VmPeak:	  412276 kB
+[INFO] 	VmSize:	  412276 kB
+[INFO] } ENDINFO
+
+Point visibility checks 512304 (77.13%, 2s, ETA 593ms)...
+Point visibility checks 664206 (100%, 2s915ms)
+[INFO] MEMORYINFO: {
+[INFO] 	VmPeak:	  165688 kB
+[INFO] 	VmSize:	  165688 kB
+[INFO] } ENDINFO
+[INFO] ======== Filterpoints ========
+[INFO] Filtering /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/undistorted/openmvs/scene_dense_dense_filtered.ply (statistical, meanK 16, standard deviation 5)
+[INFO] Boundary [[11.748057184139807, -26.05631607664236], [10.455415768879075, -26.634615372032385], [9.134652663585339, -27.145435056979295], [7.789287745584341, -27.587413778742302], [6.422906448463516, -27.95937364791007], [5.03915022905411, -28.260323379402507], [3.6417068367400938, -28.489460930441965], [2.2343005063986205, -28.646175639102694], [0.8206820197911733, -28.730049855056677], [-0.5953812828710503, -28.740860050757874], [-2.010115548638088, -28.67857741143507], [-3.4197504649827457, -28.543367922403377], [-4.82052930644287, -28.335591921330888], [-6.208718952625452, -28.05580313362134], [-6.468969142432718, -27.996320498506066], [-7.938936454146562, -27.61725738770747], [-9.385683299177717, -27.157457054922816], [-10.80477889803743, -26.61832766896532], [-12.191877158494126, -26.001520355911452], [-13.542729983241689, -25.308924133870278], [-14.853200279078838, -24.542660134476137], [-16.119274626388606, -23.70507509725121], [-17.337075569569524, -22.79873419318301], [-17.83095638933165, -22.409476122683373], [-18.915626242892277, -21.508433453021098], [-19.952560091060977, -20.552842117012005], [-20.939017848945614, -19.545227246456307], [-21.87239281078374, -18.488251452897202], [-22.750218549180236, -17.38470777785824], [-23.570175422490966, -16.23751232014456], [-24.33009669943286, -15.049696528100867], [-25.027974299057778, -13.824399188491043], [-25.66196409440173, -12.564858130509492], [-26.23039076979777, -11.274401676239904], [-26.731752265845817, -9.956439836862955], [-27.01004143375477, -9.164180235452477], [-27.62854287111705, -7.161812195651692], [-27.89594486811703, -6.162174630541813], [-28.23436128571203, -4.747898792013984], [-28.49735383353701, -3.3176761708264166], [-28.684183407244664, -1.875526198516127], [-28.79432494998483, -0.4255018263165766], [-28.82746892389415, 1.0283218596787265], [-28.783522185073625, 2.481859105192598], [-28.662608237374034, 3.931024951530162], [-28.472168786819484, 5.659206593079034], [-28.287470400701668, 7.0210059676510355], [-28.03480071681125, 8.371846096260015], [-27.714793907846715, 9.708336521890487], [-27.32825315384699, 11.027122803866405], [-26.87614863100035, 12.324894932467032], [-26.359615074606072, 13.598395649129998], [-25.779948920612615, 14.844428606466863], [-25.138605071832817, 16.059866401735235], [-24.43719322760163, 17.241658422532964], [-24.234566101706978, 17.564358847816948], [-23.421913347575273, 18.78487766931812], [-22.545203000209685, 19.96022852535407], [-21.60694012967443, 21.087053017709877], [-20.609805696779322, 22.162131407550078], [-19.556648866176065, 23.18239181327681], [-18.450478887553718, 24.14491898428696], [-17.29445648369884, 25.046962638870355], [-16.091884827143904, 25.885945316656034], [-14.846200093529578, 26.659469745140996], [-13.560961652216893, 27.36532568945131], [-12.239841888561305, 28.001496268921073], [-10.886615716289189, 28.566163716740448], [-9.505149783934858, 29.057714581043], [-8.099391434942763, 29.474744325755637], [-6.673357424461676, 29.81606134762569], [-5.231122441725267, 30.080690384395893], [-3.776807466191632, 30.26787530004094], [-2.3145679944617874, 30.377081242874738], [-0.848582169176472, 30.407996171522427], [0.6169611658943616, 30.36053175318102], [2.077874430319833, 30.234823612864602], [3.859506642543318, 30.033420088370804], [5.236170999570357, 29.842361533567782], [6.601390998442264, 29.581818911266055], [7.951661892798336, 29.25246108243755], [9.283517323764581, 28.855133560505237], [10.593538196854833, 28.390856353003073], [11.878361482037771, 27.86082133594482], [13.134688825443927, 27.266389197106946], [14.359295034412835, 26.609085941939156], [15.549036345774848, 25.89059897327843], [16.700858501814846, 25.112772765355658], [17.811804589447174, 24.277604126157712], [18.87902263072746, 23.3872370692161], [19.899772903746534, 22.443957313099418], [20.871434981566463, 21.450186409540947], [21.257088653607834, 21.035229606689427], [22.263413310148362, 19.89022415866657], [23.204579559019376, 18.691085774936255], [24.077680950616095, 17.441517566233415], [24.28552771835083, 17.125710057346623], [25.053240006886963, 15.888976840903524], [25.754266922459546, 14.613260396775331], [26.386634430014137, 13.302153038927827], [26.94856183776127, 11.959346743552487], [27.43846679674888, 10.588622746193323], [27.854969778894056, 9.193840900105897], [28.196897944067214, 7.778928798642482], [28.372207223767955, 6.95875839355449], [28.66168591739105, 5.379722964736175], [28.85829872740859, 3.7864577002083024], [28.961372265922446, 2.1844194247578343], [28.99977115062492, 1.0872801167615762], [29.01192187807018, -0.37642200102982315], [28.945978565937448, -1.8386883961311469], [28.8021289835261, -3.2953554234509284], [28.580782725340296, -4.742275383304332], [28.282570048332754, -6.175328328371506], [27.90834008469673, -7.59043379533523], [27.459158410182763, -8.983562427670222], [27.189450263375956, -9.749458993300323], [26.676912173493374, -11.091650760946322], [26.09480308052579, -12.405166292893227], [25.44471982666718, -13.686402345988427], [24.728445719792116, -14.931844226996873], [23.947945646340568, -16.138075435631436], [23.10536067616621, -17.301787031562526], [22.203002194738556, -18.41978671725792], [21.24334554826336, -19.48900758950458], [20.22902327413166, -20.50651655646925], [19.16281786547469, -21.46952238409267], [18.047654139906708, -22.375383346438866], [16.886591216646675, -23.221614481512916], [15.682814129725639, -24.00589440551539], [14.439625084730405, -24.72607167505612], [13.160434404718298, -25.380170694766093], [11.748057184139807, -26.05631607664236]]
+input = /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/undistorted/openmvs/scene_dense_dense_filtered.ply
+output = /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_filterpoints/point_cloud.ply
+stats = /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_filterpoints/point_cloud_stats.json
+std = 5
+meanK = 16
+boundary = 133 polygon vertexes
+concurrency = 4
+verbose = no
+
+[INFO] Cropping
+[INFO] Done cropping in 0.1887s
+[INFO] Skipping sampling
+[INFO] Statistical filtering
+[INFO] Spacing estimation completed (0.01 meters)
+[INFO] Done in 0.6254s
+[INFO] Writing output
+[INFO] Done in 0.09252s
+[INFO] Filtering completed in 0.9066s
+[INFO] ========== Meshing ===========
+[INFO] Mesh size set to 150000
+[INFO] Generating mesh: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/odm_mesh.ply
+Vertices: 957645
+Triangles: 1907020
+iteration 0 - triangles 1907020 threshold 2.187e-06
+Final triangle count: 299660
+Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/odm_mesh.ply
+[INFO] Writing 2.5D Mesh file in: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/odm_25dmesh.ply
+[INFO] 2.5D DSM resolution: 0.05
+[INFO] Created temporary directory: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp
+[INFO] Creating DSM for 2.5D mesh
+Reading 654425 points
+Point cloud bounds are [minx: -3.90338897705, maxx: 1.90980124474, miny: -3.70355725288, maxy: 4.93721342087]
+Really low resolution DEM requested (117, 173) will set floor at 256 pixels. Resolution changed to 0.0338150289017. The scale of this reconstruction might be off.
+DEM resolution is (173, 256), max tile size is 4096, will split DEM generation into 1 tiles
+r0.0106233_x0_y0.tif
+r0.0150236_x0_y0.tif
+r0.0212466_x0_y0.tif
+[INFO] Generated 3 tiles
+0
+...10...20...30...40...50
+...
+60...70
+...80...90
+...
+0...10...20...30...40...50...60...70...80...90...100 - done.
+Input file size is 172, 256
+0...10...20...30...40...50...60...70...80...90...100 - done.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Filtering /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/merged.vrt
+Input: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/merged.vrt
+Size: 172x256
+Blocks: 1
+Smoothing...1... done
+Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/mesh_dsm.tif
+[INFO] Completed smoothing to create /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/mesh_dsm.tif in 0:00:00.049409
+[INFO] Completed mesh_dsm.tif in 0:00:00.362337
+[INFO] Creating mesh from DSM: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/mesh_dsm.tif
+Running with parameters:
+-inputFile /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/tmp/mesh_dsm.tif
+-outputFile /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_meshing/odm_25dmesh.dirty.ply
+-maxVertexCount 150000
+-maxTileLength 2000
+-maxConcurrency 4
+-edgeSwapThreshold 0.150000
+-verbose
+Raster Size is 172x256
+Extent is (-3.903389, 1.912796), (-3.703557, 4.953090)
+NoData value: -9999
+Description:
+Reading raster...
+Total vertices before simplification: 44032
+Subdivisions: 1x1
+Splitting area in 1
+Block size is 172, 256
+Concurrency set to 4
+Allocating 1 raster data blocks of 692 bytes
+Scanning block (0,0)
+Empty blocks: 0
+Processing block (0,0)
+Sampled 87210 faces, target is 87210
+No simplification needed
+Single block, saving to PLY
+Performing edge collapses...
+Writing to file...  done!
+[INFO] MEMORYINFO: {
+[INFO] 	VmPeak:	   94720 kB
+[INFO] 	VmSize:	   94720 kB
+[INFO] } ENDINFO
+[INFO] ========= Mvs texturing ==========
+[INFO] Generating textured model
+/code/SuperBuild/install/bin/texrecon (built on Apr  3 2026, 22:00:00)
+Load and prepare mesh:
+PLY Loader: comment Generated by simplifymesh
+Reading PLY: 151136 verts... 299660 faces... done.
+Removed 150 redundant faces.
+Generating texture views:
+NVM: Loading file...
+NVM: Number of views: 20
+NVM: Number of features: 3802
+Loading cameras
+Building adjacency graph:
+Adding edges
+447983 total edges.
+View selection:
+Building BVH from 299510 faces... done. (Took: 192 ms)
+Calculating face qualities
+Postprocessing face infos
+Maximum quality of a face within an image: 245.057
+Clamping qualities to 14.0186 within normalization.
+Optimizing:
+Time[s]	Energy
+0	250419
+0	249978
+0	246394
+1	244866
+1	244287
+1	243971
+1	243780
+2	243682
+2	243574
+2	243526
+2	243499
+3	243466
+3	243444
+3	243420
+3082 faces have not been seen
+Took: 6.631s
+Generating texture patches:
+Running... done. (Took 0.244s)
+1360 texture patches.
+Running global seam leveling:
+Create matrices for optimization...  done.
+Lhs dimensionality: 162559 x 162559
+Selected regularization factor: 0.0001
+Calculating adjustments:
+Color channel 0: CG took 90 iterations. Residual is 8.88142e-05
+Color channel 1: CG took 90 iterations. Residual is 8.83347e-05
+Color channel 2: CG took 90 iterations. Residual is 8.91822e-05
+Took 0.211 seconds
+Adjusting texture patches
+Running local seam leveling:
+Blending texture patches
+Generating texture atlases:
+Sorting texture patches... done.
+
+Working on atlas 5 100%... done.
+Finalizing texture atlases... done. (Took: 0s)
+Building objmodel:
+Saving model... done.
+Whole texturing procedure took: 10.431s
+[INFO] Generating textured model
+/code/SuperBuild/install/bin/texrecon (built on Apr  3 2026, 22:00:00)
+Load and prepare mesh:
+Reading PLY: 43999 verts... 87144 faces... done.
+Generating texture views:
+NVM: Loading file...
+NVM: Number of views: 20
+NVM: Number of features: 3802
+Loading cameras
+Building adjacency graph:
+Adding edges
+130290 total edges.
+View selection:
+Building BVH from 87144 faces... done. (Took: 76 ms)
+Calculating face qualities
+Postprocessing face infos
+Maximum quality of a face within an image: 9612.49
+Clamping qualities to 8629.04 within normalization.
+Optimizing:
+Time[s]	Energy
+0	59107
+0	58638
+0	58118
+0	57911
+0	57788
+0	57745
+0	57708
+0	57708
+0	57689
+0	57681
+0	57675
+0	57665
+0	57661
+10975 faces have not been seen
+Took: 1.202s
+Generating texture patches:
+Running... done. (Took 0.058s)
+94 texture patches.
+Running global seam leveling:
+Create matrices for optimization...  done.
+Lhs dimensionality: 40819 x 40819
+Selected regularization factor: 0.0001
+Calculating adjustments:
+Color channel 0: CG took 71 iterations. Residual is 9.55741e-05
+Color channel 1: CG took 76 iterations. Residual is 8.09318e-05
+Color channel 2: CG took 76 iterations. Residual is 8.82769e-05
+Took 0.028 seconds
+Adjusting texture patches
+Running local seam leveling:
+Blending texture patches
+Generating texture atlases:
+Sorting texture patches... done.
+
+Working on atlas 1 100%... done.
+Finalizing texture atlases... done. (Took: 0s)
+Building objmodel:
+Saving model... done.
+Whole texturing procedure took: 2.224s
+[INFO] ======= Georeferencing =======
+[INFO] LAS scale set at 0.001
+[INFO] Georeferencing point cloud
+[INFO] Calculating cropping area and generating bounds shapefile from point cloud
+[INFO] Edge length set to 1.0 for computing point cloud bounds
+[WARNING] Very small crop area detected, we will not smooth it.
+[INFO] Georeferencing textured model /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing_25d/odm_textured_model_geo.obj
+[INFO] Georeferencing textured model /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.obj
+[INFO] Creating Entwine Point Tile output
+1/1: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_georeferencing/odm_georeferenced_model.laz
+Dimensions: [
+X:int32, Y:int32, Z:int32, Intensity:uint16, ReturnNumber:uint8,
+NumberOfReturns:uint8, ScanDirectionFlag:uint8, EdgeOfFlightLine:uint8,
+Classification:uint8, Synthetic:uint8, KeyPoint:uint8, Withheld:uint8,
+Overlap:uint8, ScanAngleRank:float32, UserData:uint8, PointSourceId:uint16,
+GpsTime:float64, Red:uint16, Green:uint16, Blue:uint16, OriginId:uint32
+]
+Points: 654,425
+Bounds: [(717504, 9295639, 67), (717510, 9295648, 76)]
+Scale: 0.001
+SRS: EPSG:32748
+
+Adding 0 - /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_georeferencing/odm_georeferenced_model.laz
+Joining
+Done 0
+Saving
+Wrote 654,425 points.
+[INFO] ============ Dem =============
+[INFO] Create DSM: True
+[INFO] Create DTM: False
+[INFO] DEM input file /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_georeferencing/odm_georeferenced_model.laz found: True
+Reading points from /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_georeferencing/odm_georeferenced_model.laz
+Number of points: 654425
+Classification dimension: Classification
+Point cloud bounds are [minx: 717504.114, maxx: 717509.911, miny: 9295639.301, maxy: 9295647.951]
+DEM resolution is (290, 433), max tile size is 4096, will split DEM generation into 1 tiles
+r0.01_x0_y0.tif
+r0.0141421_x0_y0.tif
+r0.02_x0_y0.tif
+[INFO] Generated 3 tiles
+100 - done.
+0
+...10
+...20...30.
+..40..
+.50
+.
+.
+.
+60.
+.
+.
+70
+.
+.
+.
+80
+.
+.
+.
+90
+.
+.
+.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+Input file size is 290, 433
+0...10...20...30...40...50...60...70...80...90...100 - done.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Filtering /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/merged.vrt
+Input: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/merged.vrt
+Size: 290x433
+Blocks: 1
+Smoothing...1... done
+Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif
+[INFO] Completed smoothing to create /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif in 0:00:00.100165
+[INFO] Set /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif unit to m
+[INFO] Completed dsm.tif in 0:00:00.749875
+[INFO] Cropping /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif
+Creating output file that is 374P x 562L.
+Processing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.original.tif [1/1] : 0Using internal nodata values (e.g. -9999) for image /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.original.tif.
+Copying nodata values from source /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.original.tif to destination /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif.
+...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Optimizing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.tif as Cloud Optimized GeoTIFF
+Input file size is 374, 562
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] ========= Orthophoto =========
+[INFO] Creating GeoTIFF
+[INFO] Output: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto.tif
+[INFO] Resolution: 20 px/m
+[INFO] Inpaint thresh: 1
+[INFO] SRS units: metre (conversion factor: 1)
+[INFO] Meshes to load: 1
+[INFO] Reading mesh... /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing_25d/odm_textured_model_geo.obj
+[INFO] Loading odm_textured_model_geo_material0000_map_Kd.png
+[INFO] Mesh loaded
+[INFO] Bounds X: [-3.91802, 1.89816]
+[INFO] Bounds Y: [-3.67751, 4.96878]
+[INFO] Transforming...
+[INFO] Area: 50.2884 m2
+[INFO] Pixel resolution: 117x173
+[INFO] Texture depth: 0
+[INFO] Processing 1 tiles with max size 512 pixels
+[INFO] GDAL_CACHEMAX=3633235968
+[INFO] TILED=YES
+[INFO] COMPRESS=DEFLATE
+[INFO] PREDICTOR=2
+[INFO] BIGTIFF=IF_SAFER
+[INFO] BLOCKXSIZE=512
+[INFO] BLOCKYSIZE=512
+[INFO] NUM_THREADS=4
+100% [1/1]
+[INFO] Writing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto_corners.txt
+[INFO] Rendering completed
+[INFO] Cropping /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto.tif
+Using band 4 of source image as alpha.
+Creating output file that is 149P x 224L.
+Processing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto.original.tif [1/1] : 0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Optimizing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto.tif as Cloud Optimized GeoTIFF
+Input file size is 149, 224
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto_extent.dxf
+[INFO] Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_orthophoto/odm_orthophoto.tfw
+[INFO] =========== Report ===========
+[INFO] Exporting shots.geojson
+[INFO] Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_report/shots.geojson
+[INFO] Copied /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/camera_mappings.npz --> /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_report/camera_mappings.npz
+[INFO] Cropping /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/stats/overlap.tif
+Creating output file that is 1213P x 1821L.
+Processing /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/stats/overlap.original.tif [1/1] : 0Using internal nodata values (e.g. 255) for image /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/stats/overlap.original.tif.
+Copying nodata values from source /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/stats/overlap.original.tif to destination /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/opensfm/stats/overlap.tif.
+...10...20...30...40...50...60...70...80...90...100 - done.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+Input file size is 149, 224
+0...10...20...30...40...50...60...70...80...90...100 - done.
+Input file size is 374, 562
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Computing raster stats for /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_dem/dsm.preview.tif
+0...10...20...30...40...50...60...70...80...90...100 - done.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+0...10...20...30...40...50...60...70...80...90...100 - done.
+Input file size is 1400, 2104
+0...10...20...30...40...50...60...70...80...90...100 - done.
+[INFO] Exporting report to /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_report/report.pdf
+[INFO] ======== Postprocess =========
+[INFO] Generating glTF Binary
+[INFO] Converting /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.obj --> /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.glb
+[INFO] Loading /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.obj
+[INFO] Loading odm_textured_model_geo_material0000_map_Kd.png
+[INFO] Loading odm_textured_model_geo_material0001_map_Kd.png
+[INFO] Loading odm_textured_model_geo_material0002_map_Kd.png
+[INFO] Loading odm_textured_model_geo_material0003_map_Kd.png
+[INFO] Loading odm_textured_model_geo_material0004_map_Kd.png
+[INFO] Writing...
+[INFO] Wrote /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.glb
+[INFO] Compressing with draco
+Transcode	/var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc/odm_texturing/odm_textured_model_geo.glb	543
+[INFO] No more stages
+[INFO] Done! Took 2m 35s :)
+100 - done.
+Postprocessing: /var/www/data/dea3e3b0-57fa-4fdc-a26a-c3d9118de6fc
+
+Found point cloud: odm_georeferencing/odm_georeferenced_model.laz
+Entwine point cloud is already built.
+
+Entwine point cloud is already built.
+Postprocessing: done (•̀ᴗ•́)و!
