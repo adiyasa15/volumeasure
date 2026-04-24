@@ -297,6 +297,8 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
   let nextStatus = row.status as "queued" | "running" | "completed" | "failed";
   let nextProgress = row.progress;
   let nextVolume = row.volumeM3;
+  let nextCutVolume = row.cutVolumeM3;
+  let nextFillVolume = row.fillVolumeM3;
   let nextArea = row.areaSqm;
   let completedAt = row.completedAt;
   let processingStartedAt = row.processingStartedAt;
@@ -324,21 +326,47 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
 
       if (nextStatus === "completed") {
         completedAt = completedAt ?? new Date();
-        if (!isManualMode && nextVolume == null) {
-          nextVolume = estimateVolume(row.acceptedImageCount, row.precisionLevel);
-          nextArea = estimateArea(row.acceptedImageCount);
-        }
         if (nextDuration == null) {
           nextDuration = computeDuration(row.processingStartedAt, completedAt);
         }
+
+        // ── Automatic mode: compute real DSM-based volume using survey bounds ──
+        // This runs BEFORE the orthophoto purge so the NodeODM task is still alive.
+        if (!isManualMode && nextVolume == null) {
+          try {
+            const bounds = await fetchOrthophotoBounds(row.webodmTaskId!);
+            if (bounds) {
+              const boundsPolygon = boundsToPolygonLatLng(bounds);
+              const vol = await calculateVolumeFromDSM(row.webodmTaskId!, boundsPolygon);
+              if (vol) {
+                nextCutVolume  = Math.round(vol.cutM3 * 100) / 100;
+                nextFillVolume = Math.round(vol.fillM3 * 100) / 100;
+                nextVolume     = Math.round(vol.netM3 * 100) / 100;
+                nextArea       = Math.round(vol.areaSqm * 100) / 100;
+                nextPolygon    = boundsPolygon;
+                logger.info({ jobId: row.id, cutM3: vol.cutM3, fillM3: vol.fillM3, areaSqm: vol.areaSqm },
+                  "Automatic DSM volume calculated from survey bounds");
+              }
+            }
+          } catch (err) {
+            logger.warn({ err, jobId: row.id }, "Automatic DSM volume failed, using geometric fallback");
+          }
+
+          // Geometric fallback when DSM unavailable
+          if (nextVolume == null) {
+            nextArea   = estimateArea(row.acceptedImageCount);
+            nextVolume = Math.round((nextArea ?? 0) * 2.0 * 0.33 * 100) / 100;
+            logger.info({ jobId: row.id }, "Using geometric volume estimate (DSM unavailable)");
+          }
+        }
+
         if (!nextPolygon) {
           nextPolygon = synthesizePolygon(row.latitude, row.longitude);
         }
-        // Signal that NodeODM assets (bounds etc.) are accessible.
-        // On the FIRST transition to completed, proactively fetch & cache the
-        // orthophoto JPEG so it remains available after NodeODM expires assets.
-        // Also retry for jobs that completed but whose orthophoto was never
-        // cached (e.g. when optimize-disk-space=true caused immediate 404).
+
+        // Signal that NodeODM assets are accessible.  Proactively cache the
+        // orthophoto JPEG so it survives asset expiry.  Purge fires only AFTER
+        // the DB write succeeds so no data is lost if conversion fails.
         if (!nextOrthophotoUrl) {
           nextOrthophotoUrl = "tiles_ready";
         }
@@ -351,8 +379,6 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
                 .set({ orthophotoJpegB64: orthoResult.jpeg.toString("base64") })
                 .where(eq(jobsTable.id, row.id));
               logger.info({ jobId: row.id }, "Orthophoto JPEG cached in DB on completion");
-              // JPEG confirmed in DB — permanently delete NodeODM task + S3 data
-              // (purge() is a no-op when the direct asset path was used)
               orthoResult.purge();
             }
           } catch (err) {
@@ -391,6 +417,8 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
       status: nextStatus,
       progress: nextProgress,
       volumeM3: nextVolume,
+      cutVolumeM3: nextCutVolume,
+      fillVolumeM3: nextFillVolume,
       areaSqm: nextArea,
       orthophotoUrl: nextOrthophotoUrl,
       completedAt,
@@ -674,6 +702,21 @@ function estimateArea(acceptedImages: number): number {
 function computeDuration(start: Date | null, end: Date | null): number | null {
   if (!start || !end) return null;
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+}
+
+/**
+ * Convert an orthophoto bounding box [west, south, east, north] (WGS-84) to a
+ * 4-corner polygon in [[lat, lng], …] order — matching the convention expected
+ * by calculateVolumeFromDSM and the polygon PATCH endpoint.
+ */
+function boundsToPolygonLatLng(bounds: [number, number, number, number]): number[][] {
+  const [west, south, east, north] = bounds;
+  return [
+    [north, west],
+    [north, east],
+    [south, east],
+    [south, west],
+  ];
 }
 
 /** Approximate stockpile footprint as a regular octagon (~30 m radius). */
