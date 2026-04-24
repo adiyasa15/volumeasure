@@ -57,6 +57,7 @@ export async function createTaskInit(
     const options: Array<{ name: string; value: unknown }> = [
       { name: "auto-boundary", value: true },
       { name: "dsm", value: true },
+      { name: "dtm", value: true },
       { name: "orthophoto-resolution", value: 5 },
       { name: "feature-quality", value: "high" },
       // Keep output assets on local disk so our server can fetch them for
