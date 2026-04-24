@@ -59,7 +59,7 @@ const clerkAppearance = {
     footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
     headerTitle: "text-foreground font-mono uppercase font-bold",
     headerSubtitle: "text-muted-foreground",
-    socialButtonsBlockButtonText: "text-foreground font-medium",
+    socialButtonsBlockButtonText: { color: "rgba(255,255,255,0.92)", fontWeight: "500" },
     formFieldLabel: "text-muted-foreground font-mono uppercase text-xs",
     footerActionLink: "text-primary hover:text-primary/80",
     footerActionText: "text-muted-foreground",
