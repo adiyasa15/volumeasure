@@ -23,11 +23,6 @@ import {
   TrendingDown,
   Minus,
 } from "lucide-react";
-import parseGeoraster from "georaster";
-import GeoRasterLayer from "georaster-layer-for-leaflet";
-
-// Make Leaflet available globally so georaster-layer-for-leaflet can find it
-(window as any).L = L;
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -92,11 +87,11 @@ function DotMarkers({ positions }: { positions: LatLng[] }) {
 function FitOnOpen({
   jobId,
   open,
-  tilesReady,
+  overlayReady,
 }: {
   jobId: string;
   open: boolean;
-  tilesReady: boolean;
+  overlayReady: boolean;
 }) {
   const map = useMap();
 
@@ -104,7 +99,7 @@ function FitOnOpen({
     if (!open) return;
     const timer = setTimeout(async () => {
       map.invalidateSize();
-      if (tilesReady) return; // OrthophotoLayer will fly to real bounds
+      if (overlayReady) return; // JpegOverlayLayer will fly to real bounds
 
       try {
         const res = await fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" });
@@ -125,37 +120,34 @@ function FitOnOpen({
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, jobId, tilesReady]);
+  }, [open, jobId, overlayReady]);
 
   return null;
 }
 
-// ── Orthophoto overlay layer ──────────────────────────────────────────────────
+// ── Orthophoto JPEG image overlay ─────────────────────────────────────────────
+// Uses the fast server-side JPEG + bounding box — no GeoTIFF download needed.
 
-function OrthophotoLayer({
+function JpegOverlayLayer({
   jobId,
   opacity,
   onLoadChange,
   onError,
+  onReady,
 }: {
   jobId: string;
   opacity: number; // 0–100
   onLoadChange?: (loading: boolean) => void;
   onError?: () => void;
+  onReady?: (bounds: L.LatLngBoundsExpression) => void;
 }) {
   const map = useMap();
-  const layerRef = useRef<any>(null);
+  const layerRef = useRef<L.ImageOverlay | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
-  // Dynamically update CSS opacity when slider changes (no re-fetch)
+  // Live opacity update without re-fetching
   useEffect(() => {
-    const layer = layerRef.current;
-    if (!layer) return;
-    // GeoRasterLayer renders into a canvas pane container
-    const container: HTMLElement | undefined =
-      layer._container ?? layer._levels?.[Object.keys(layer._levels)[0]]?.el;
-    if (container) {
-      container.style.opacity = String(opacity / 100);
-    }
+    layerRef.current?.setOpacity(opacity / 100);
   }, [opacity]);
 
   useEffect(() => {
@@ -164,39 +156,50 @@ function OrthophotoLayer({
 
     (async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}/orthophoto`, { credentials: "include" });
-        if (!res.ok || cancelled) {
+        // Fetch JPEG and bounding box in parallel
+        const [jpegRes, tileRes] = await Promise.all([
+          fetch(`/api/jobs/${jobId}/orthophoto-jpeg`, { credentials: "include" }),
+          fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" }),
+        ]);
+
+        if (!jpegRes.ok || !tileRes.ok || cancelled) {
           onError?.();
           return;
         }
 
-        const arrayBuffer = await res.arrayBuffer();
+        const [jpegBlob, tileJson] = await Promise.all([
+          jpegRes.blob(),
+          tileRes.json() as Promise<{ bounds?: [number, number, number, number] }>,
+        ]);
+
         if (cancelled) return;
 
-        const georaster = await parseGeoraster(arrayBuffer);
-        if (cancelled) return;
+        if (!tileJson.bounds) {
+          onError?.();
+          return;
+        }
 
-        const layer = new GeoRasterLayer({
-          georaster,
-          opacity: opacity / 100,
-          resolution: 256,
-        });
+        const [west, south, east, north] = tileJson.bounds;
+        const bounds: L.LatLngBoundsExpression = [[south, west], [north, east]];
 
+        const blobUrl = URL.createObjectURL(jpegBlob);
+        blobUrlRef.current = blobUrl;
+
+        const layer = L.imageOverlay(blobUrl, bounds, { opacity: opacity / 100 });
         layerRef.current = layer;
         layer.addTo(map);
 
-        const { xmin, ymin, xmax, ymax } = georaster;
-        if (xmin != null && ymin != null && xmax != null && ymax != null) {
-          map.flyToBounds([[ymin, xmin], [ymax, xmax]], {
-            padding: [32, 32],
-            maxZoom: 22,
-            animate: true,
-            duration: 1.0,
-          });
-        }
+        map.flyToBounds(bounds, {
+          padding: [32, 32],
+          maxZoom: 22,
+          animate: true,
+          duration: 1.0,
+        });
+
+        onReady?.(bounds);
       } catch (err) {
-        console.error("[OrthophotoLayer] Failed to load orthophoto:", err);
-        onError?.();
+        console.error("[JpegOverlayLayer] Failed:", err);
+        if (!cancelled) onError?.();
       } finally {
         if (!cancelled) onLoadChange?.(false);
       }
@@ -208,6 +211,10 @@ function OrthophotoLayer({
       if (layer) {
         try { map.removeLayer(layer); } catch { /**/ }
         layerRef.current = null;
+      }
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -224,10 +231,8 @@ type Props = {
   jobId: string;
   center: [number, number] | null;
   tilesReady?: boolean;
-  /** Called with the full updated job after volume is saved. */
   onComplete?: (result: DrawerVolumeResult) => void;
   isSaving?: boolean;
-  /** Legacy: called with raw coords. Use onComplete for full result. */
   onMeasure?: (coords: number[][]) => void;
 };
 
@@ -244,6 +249,7 @@ export function PolygonDrawer({
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [orthophotoLoading, setOrthophotoLoading] = useState(false);
   const [orthophotoError, setOrthophotoError] = useState(false);
+  const [overlayReady, setOverlayReady] = useState(false);
   const [opacity, setOpacity] = useState(80);
   const [isCalculating, setIsCalculating] = useState(false);
   const [result, setResult] = useState<DrawerVolumeResult | null>(null);
@@ -258,11 +264,12 @@ export function PolygonDrawer({
       setResult(null);
       setOrthophotoError(false);
       setOrthophotoLoading(false);
+      setOverlayReady(false);
     }
   }, [open]);
 
   const handleClick = (latlng: LatLng) => {
-    if (result) return; // lock map after result shown
+    if (result) return;
     setVertices((prev) => [...prev, latlng]);
   };
 
@@ -273,7 +280,6 @@ export function PolygonDrawer({
     if (vertices.length < 3) return;
     const coords = vertices.map((v) => [v[0], v[1]]);
 
-    // If parent uses legacy onMeasure, delegate to it
     if (onMeasure && !onComplete) {
       onMeasure(coords);
       return;
@@ -304,7 +310,6 @@ export function PolygonDrawer({
       setResult(drawerResult);
       onComplete?.(drawerResult);
     } catch {
-      // surface error to user
       console.error("Volume calculation failed");
     } finally {
       setIsCalculating(false);
@@ -313,11 +318,10 @@ export function PolygonDrawer({
 
   const polyPositions: LatLng[] = vertices.length >= 2 ? [...vertices, vertices[0]] : vertices;
 
-  // Build ESRI static satellite banner URL from the job center coordinates
   const esriBannerUrl = (() => {
     if (!center) return null;
     const [lat, lng] = center;
-    const buf = 0.004; // ~400 m buffer
+    const buf = 0.004;
     const west  = (lng - buf).toFixed(6);
     const east  = (lng + buf).toFixed(6);
     const south = (lat - buf * 0.5).toFixed(6);
@@ -327,6 +331,8 @@ export function PolygonDrawer({
       `?bbox=${west},${south},${east},${north}&bboxSR=4326&size=760,120&imageSR=4326&format=jpg&f=image`
     );
   })();
+
+  const showOverlay = tilesReady && !orthophotoError;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -341,7 +347,6 @@ export function PolygonDrawer({
               className="absolute inset-0 w-full h-full object-cover"
               draggable={false}
             />
-            {/* gradient overlay so text above is readable */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent" />
             <div className="absolute inset-x-0 top-0 px-6 pt-4">
               <p className="text-[10px] font-mono uppercase tracking-widest text-white/70">
@@ -363,7 +368,9 @@ export function PolygonDrawer({
           <DialogDescription className="text-xs">
             Click on the map to place vertices around your stockpile. Place at least 3 points,
             then click Calculate Volume.
-            {tilesReady && !orthophotoError && " Your drone orthophoto is overlaid below."}
+            {showOverlay && overlayReady && " Orthophoto overlay active — adjust opacity with the slider."}
+            {showOverlay && orthophotoLoading && " Loading orthophoto overlay…"}
+            {tilesReady && orthophotoError && " Orthophoto overlay unavailable — using satellite basemap."}
           </DialogDescription>
         </DialogHeader>
 
@@ -390,8 +397,8 @@ export function PolygonDrawer({
             <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear
           </Button>
 
-          {/* Opacity control — only when orthophoto is available */}
-          {tilesReady && !orthophotoError && (
+          {/* Opacity control — only when overlay is visible */}
+          {showOverlay && (overlayReady || orthophotoLoading) && (
             <div className="flex items-center gap-2 ml-2 border-l border-border/40 pl-3">
               <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
@@ -413,7 +420,6 @@ export function PolygonDrawer({
 
           <div className="flex-1" />
 
-          {/* Vertex hint */}
           <span className="text-[11px] font-mono text-muted-foreground">
             {result ? (
               <span className="text-emerald-400">Volume calculated</span>
@@ -458,16 +464,17 @@ export function PolygonDrawer({
                 maxZoom={23}
               />
 
-              {tilesReady && open && !orthophotoError && (
-                <OrthophotoLayer
+              {showOverlay && open && (
+                <JpegOverlayLayer
                   jobId={jobId}
                   opacity={opacity}
                   onLoadChange={setOrthophotoLoading}
                   onError={() => setOrthophotoError(true)}
+                  onReady={() => setOverlayReady(true)}
                 />
               )}
 
-              <FitOnOpen jobId={jobId} open={open} tilesReady={tilesReady && !orthophotoError} />
+              <FitOnOpen jobId={jobId} open={open} overlayReady={overlayReady} />
               {!result && <ClickCapture onMapClick={handleClick} />}
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
@@ -486,6 +493,13 @@ export function PolygonDrawer({
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground font-mono">
               No GPS coordinates available for this job.
+            </div>
+          )}
+
+          {/* Loading overlay badge */}
+          {showOverlay && orthophotoLoading && (
+            <div className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-mono px-2 py-1 rounded">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading orthophoto…
             </div>
           )}
         </div>
