@@ -373,7 +373,17 @@ async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> 
         .on("end", resolve)
         .on("error", reject);
     });
-    return Buffer.concat(chunks);
+    const tiffBuf = Buffer.concat(chunks);
+
+    // Orthophoto extracted — permanently delete the NodeODM task (and its S3
+    // all.zip) now that we have everything we need cached in our database.
+    // Fire-and-forget: don't await so it doesn't delay the caller.
+    deleteTask(uuid).catch((err: unknown) =>
+      logger.warn({ err, uuid }, "Failed to delete NodeODM task after zip extraction"),
+    );
+    logger.info({ uuid }, "NodeODM task deletion triggered after all.zip extraction");
+
+    return tiffBuf;
   } catch (err) {
     logger.error({ err, uuid }, "fetchOrthophotoTiffFromZip error");
     return null;
