@@ -77,14 +77,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </span>
                 <UserButton
                   appearance={{
+                    variables: {
+                      colorBackground: "#1a1a1a",
+                      colorText: "#ffffff",
+                      colorTextSecondary: "rgba(255,255,255,0.7)",
+                      colorNeutral: "#ffffff",
+                    },
                     elements: {
                       avatarBox: "h-8 w-8 rounded-md",
-                      userButtonPopoverCard: "bg-[#1a1a1a] border border-white/10 shadow-xl",
-                      userButtonPopoverActionButton:
-                        "text-white/90 hover:bg-white/10 hover:text-white",
-                      userButtonPopoverActionButtonText: "text-white/90",
-                      userButtonPopoverActionButtonIcon: "text-white/70",
-                      userButtonPopoverFooter: "border-t border-white/10",
+                      userButtonPopoverCard: {
+                        backgroundColor: "#1a1a1a",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+                      },
+                      userButtonPopoverActionButton: {
+                        color: "#ffffff",
+                      },
+                      userButtonPopoverActionButtonText: {
+                        color: "#ffffff",
+                      },
+                      userButtonPopoverActionButtonIcon: {
+                        color: "rgba(255,255,255,0.7)",
+                      },
+                      userButtonPopoverFooter: {
+                        borderTop: "1px solid rgba(255,255,255,0.1)",
+                      },
                     },
                   }}
                 />
