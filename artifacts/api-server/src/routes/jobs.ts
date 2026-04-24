@@ -323,9 +323,25 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         if (!nextPolygon) {
           nextPolygon = synthesizePolygon(row.latitude, row.longitude);
         }
-        // Signal that NodeODM assets (bounds etc.) are accessible
+        // Signal that NodeODM assets (bounds etc.) are accessible.
+        // On the FIRST transition to completed, proactively fetch & cache the
+        // orthophoto JPEG so it remains available after NodeODM expires assets.
         if (!nextOrthophotoUrl) {
           nextOrthophotoUrl = "tiles_ready";
+          if (!row.orthophotoJpegB64) {
+            try {
+              const jpegBuf = await fetchOrthophotoJpeg(row.webodmTaskId!);
+              if (jpegBuf) {
+                await db
+                  .update(jobsTable)
+                  .set({ orthophotoJpegB64: jpegBuf.toString("base64") })
+                  .where(eq(jobsTable.id, row.id));
+                logger.info({ jobId: row.id }, "Orthophoto JPEG cached in DB on completion");
+              }
+            } catch (err) {
+              logger.warn({ err, jobId: row.id }, "Failed to cache orthophoto JPEG on completion");
+            }
+          }
         }
       }
     }
@@ -507,14 +523,31 @@ router.get("/:id/orthophoto-jpeg", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const jpegBuffer = await fetchOrthophotoJpeg(row.webodmTaskId);
-  if (!jpegBuffer) {
-    res.status(502).json({ error: "Orthophoto JPEG conversion failed" });
+  // Serve from DB cache if available (avoids NodeODM asset expiry issues)
+  if (row.orthophotoJpegB64) {
+    const cached = Buffer.from(row.orthophotoJpegB64, "base64");
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.setHeader("Content-Length", String(cached.byteLength));
+    res.status(200).end(cached);
     return;
   }
 
+  // Not yet cached — try to fetch from NodeODM and cache for next time
+  const jpegBuffer = await fetchOrthophotoJpeg(row.webodmTaskId);
+  if (!jpegBuffer) {
+    res.status(404).json({ error: "Orthophoto not available (NodeODM assets may have expired)" });
+    return;
+  }
+
+  // Save to DB cache so future requests don't need NodeODM
+  db.update(jobsTable)
+    .set({ orthophotoJpegB64: jpegBuffer.toString("base64") })
+    .where(eq(jobsTable.id, row.id))
+    .catch((err: Error) => logger.warn({ err, jobId: id }, "Failed to cache orthophoto JPEG"));
+
   res.setHeader("Content-Type", "image/jpeg");
-  res.setHeader("Cache-Control", "private, max-age=86400"); // cache 24 h per job
+  res.setHeader("Cache-Control", "private, max-age=86400");
   res.setHeader("Content-Length", String(jpegBuffer.byteLength));
   res.status(200).end(jpegBuffer);
 });

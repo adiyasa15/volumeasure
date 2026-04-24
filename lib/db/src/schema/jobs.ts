@@ -62,6 +62,7 @@ export const jobsTable = pgTable(
       .notNull()
       .defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    orthophotoJpegB64: text("orthophoto_jpeg_b64"),
   },
   (table) => ({
     userIdx: index("jobs_user_id_idx").on(table.userId),
