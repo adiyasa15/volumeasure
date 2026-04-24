@@ -373,22 +373,27 @@ async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> 
         .on("end", resolve)
         .on("error", reject);
     });
-    const tiffBuf = Buffer.concat(chunks);
 
-    // Orthophoto extracted — permanently delete the NodeODM task (and its S3
-    // all.zip) now that we have everything we need cached in our database.
-    // Fire-and-forget: don't await so it doesn't delay the caller.
-    deleteTask(uuid).catch((err: unknown) =>
-      logger.warn({ err, uuid }, "Failed to delete NodeODM task after zip extraction"),
-    );
-    logger.info({ uuid }, "NodeODM task deletion triggered after all.zip extraction");
-
-    return tiffBuf;
+    // Release the zip buffer from memory — we only needed it to read the directory
+    // and extract one entry. The extracted TIF chunk is all we return.
+    return Buffer.concat(chunks);
   } catch (err) {
     logger.error({ err, uuid }, "fetchOrthophotoTiffFromZip error");
     return null;
   }
 }
+
+export type FetchOrthophotoResult = {
+  /** JPEG thumbnail buffer, ≤800×800 px. */
+  jpeg: Buffer;
+  /**
+   * Call this AFTER the JPEG has been successfully cached in the database.
+   * When the zip fallback was used it permanently deletes the NodeODM task
+   * (and its S3 all.zip) so no extracted data lingers anywhere.
+   * When the direct asset path was used this is a no-op.
+   */
+  purge: () => void;
+};
 
 /**
  * Download odm_orthophoto.tif from NodeODM and convert it to a JPEG thumbnail
@@ -399,22 +404,46 @@ async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> 
  *  2. Fall back to extracting odm_orthophoto.tif from the all.zip S3 download
  *     (handles tasks that ran with optimize-disk-space=true on spark1.webodm.net).
  *
- * Returns a JPEG Buffer sized ≤800×800 px, or null on failure.
+ * Cleanup guarantee:
+ *  - All in-memory buffers (zip, tif, jpeg) are released once the function
+ *    returns — JavaScript GC reclaims them automatically.
+ *  - The caller MUST invoke result.purge() after writing to DB to permanently
+ *    remove the NodeODM task and its S3 data (zip fallback path only).
+ *
+ * Returns null on failure.
  */
-export async function fetchOrthophotoJpeg(uuid: string): Promise<Buffer | null> {
+export async function fetchOrthophotoJpeg(uuid: string): Promise<FetchOrthophotoResult | null> {
   if (!token()) return null;
 
   // 1. Direct asset path (fast path, works for optimize-disk-space=false tasks)
   let tiffBuf = await fetchOrthophotoTiff(uuid);
+  let usedZipFallback = false;
 
   // 2. Fallback: extract from all.zip via S3 redirect
   if (!tiffBuf) {
     logger.info({ uuid }, "Falling back to all.zip extraction for orthophoto");
     tiffBuf = await fetchOrthophotoTiffFromZip(uuid);
+    usedZipFallback = !!tiffBuf;
   }
 
   if (!tiffBuf) return null;
-  return tiffToJpeg(tiffBuf, uuid);
+
+  const jpeg = await tiffToJpeg(tiffBuf, uuid);
+  if (!jpeg) return null;
+
+  // tiffBuf is no longer needed — let GC reclaim it immediately
+  // (tiffBuf = null would be a type error; simply let it go out of scope)
+
+  const purge = usedZipFallback
+    ? () => {
+        logger.info({ uuid }, "Purging NodeODM task after zip extraction + DB cache confirmed");
+        deleteTask(uuid).catch((err: unknown) =>
+          logger.warn({ err, uuid }, "NodeODM task purge failed"),
+        );
+      }
+    : () => { /* direct-path: NodeODM task stays until user deletes the job */ };
+
+  return { jpeg, purge };
 }
 
 // ---------------------------------------------------------------------------

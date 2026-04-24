@@ -344,13 +344,16 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         }
         if (!row.orthophotoJpegB64) {
           try {
-            const jpegBuf = await fetchOrthophotoJpeg(row.webodmTaskId!);
-            if (jpegBuf) {
+            const orthoResult = await fetchOrthophotoJpeg(row.webodmTaskId!);
+            if (orthoResult) {
               await db
                 .update(jobsTable)
-                .set({ orthophotoJpegB64: jpegBuf.toString("base64") })
+                .set({ orthophotoJpegB64: orthoResult.jpeg.toString("base64") })
                 .where(eq(jobsTable.id, row.id));
               logger.info({ jobId: row.id }, "Orthophoto JPEG cached in DB on completion");
+              // JPEG confirmed in DB — permanently delete NodeODM task + S3 data
+              // (purge() is a no-op when the direct asset path was used)
+              orthoResult.purge();
             }
           } catch (err) {
             logger.warn({ err, jobId: row.id }, "Failed to cache orthophoto JPEG on completion");
@@ -547,22 +550,28 @@ router.get("/:id/orthophoto-jpeg", async (req: AuthedRequest, res) => {
   }
 
   // Not yet cached — try to fetch from NodeODM and cache for next time
-  const jpegBuffer = await fetchOrthophotoJpeg(row.webodmTaskId);
-  if (!jpegBuffer) {
+  const orthoResult = await fetchOrthophotoJpeg(row.webodmTaskId);
+  if (!orthoResult) {
     res.status(404).json({ error: "Orthophoto not available (NodeODM assets may have expired)" });
     return;
   }
 
-  // Save to DB cache so future requests don't need NodeODM
+  // Save to DB cache so future requests don't need NodeODM, then purge remote data
   db.update(jobsTable)
-    .set({ orthophotoJpegB64: jpegBuffer.toString("base64") })
+    .set({ orthophotoJpegB64: orthoResult.jpeg.toString("base64") })
     .where(eq(jobsTable.id, row.id))
+    .then(() => {
+      // JPEG confirmed in DB — permanently delete NodeODM task + S3 data
+      // (purge() is a no-op when the direct asset path was used)
+      orthoResult.purge();
+      logger.info({ jobId: id }, "Orthophoto JPEG cached and remote data purged");
+    })
     .catch((err: Error) => logger.warn({ err, jobId: id }, "Failed to cache orthophoto JPEG"));
 
   res.setHeader("Content-Type", "image/jpeg");
   res.setHeader("Cache-Control", "private, max-age=86400");
-  res.setHeader("Content-Length", String(jpegBuffer.byteLength));
-  res.status(200).end(jpegBuffer);
+  res.setHeader("Content-Length", String(orthoResult.jpeg.byteLength));
+  res.status(200).end(orthoResult.jpeg);
 });
 
 // ---------------------------------------------------------------------------
