@@ -313,10 +313,50 @@ export function PolygonDrawer({
 
   const polyPositions: LatLng[] = vertices.length >= 2 ? [...vertices, vertices[0]] : vertices;
 
+  // Build ESRI static satellite banner URL from the job center coordinates
+  const esriBannerUrl = (() => {
+    if (!center) return null;
+    const [lat, lng] = center;
+    const buf = 0.004; // ~400 m buffer
+    const west  = (lng - buf).toFixed(6);
+    const east  = (lng + buf).toFixed(6);
+    const south = (lat - buf * 0.5).toFixed(6);
+    const north = (lat + buf * 0.5).toFixed(6);
+    return (
+      `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export` +
+      `?bbox=${west},${south},${east},${north}&bboxSR=4326&size=760,120&imageSR=4326&format=jpg&f=image`
+    );
+  })();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-3">
+
+        {/* ── ESRI satellite banner ──────────────────────────────────── */}
+        {esriBannerUrl && (
+          <div className="relative w-full h-[90px] overflow-hidden shrink-0 bg-muted/20">
+            <img
+              src={esriBannerUrl}
+              alt="Satellite overview"
+              className="absolute inset-0 w-full h-full object-cover"
+              draggable={false}
+            />
+            {/* gradient overlay so text above is readable */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent" />
+            <div className="absolute inset-x-0 top-0 px-6 pt-4">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-white/70">
+                Esri World Imagery · Site Overview
+              </p>
+              {center && (
+                <p className="text-[10px] font-mono text-white/50 mt-0.5">
+                  {center[0].toFixed(5)}°, {center[1].toFixed(5)}°
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogHeader className="px-6 pt-4 pb-3">
           <DialogTitle className="font-mono uppercase tracking-wider">
             Draw Measurement Polygon
           </DialogTitle>
