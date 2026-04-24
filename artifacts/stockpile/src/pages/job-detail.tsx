@@ -47,7 +47,6 @@ export default function JobDetail() {
   const refreshJob = useRefreshJob();
   
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [polygonDrawerOpen, setPolygonDrawerOpen] = useState(false);
 
   // Auto-poll every 15 s while queued or running.
@@ -209,21 +208,9 @@ export default function JobDetail() {
               variant="outline"
               size="sm"
               className="font-mono uppercase text-xs"
-              disabled={isGeneratingReport}
-              onClick={async () => {
-                setIsGeneratingReport(true);
-                try {
-                  await generateJobReport(job);
-                } finally {
-                  setIsGeneratingReport(false);
-                }
-              }}
+              onClick={() => generateJobReport(job)}
             >
-              {isGeneratingReport ? (
-                <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Building…</>
-              ) : (
-                <><FileDown className="mr-2 h-3.5 w-3.5" /> Report</>
-              )}
+              <FileDown className="mr-2 h-3.5 w-3.5" /> Report
             </Button>
           )}
 
