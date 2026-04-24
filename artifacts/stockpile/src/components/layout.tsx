@@ -75,7 +75,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">
                   {user?.primaryEmailAddress?.emailAddress}
                 </span>
-                <UserButton appearance={{ elements: { avatarBox: "h-8 w-8 rounded-md" } }} />
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: "h-8 w-8 rounded-md",
+                      userButtonPopoverCard: "bg-[#1a1a1a] border border-white/10 shadow-xl",
+                      userButtonPopoverActionButton:
+                        "text-white/90 hover:bg-white/10 hover:text-white",
+                      userButtonPopoverActionButtonText: "text-white/90",
+                      userButtonPopoverActionButtonIcon: "text-white/70",
+                      userButtonPopoverFooter: "border-t border-white/10",
+                    },
+                  }}
+                />
               </div>
             ) : (
               <SignInButton mode="modal">
