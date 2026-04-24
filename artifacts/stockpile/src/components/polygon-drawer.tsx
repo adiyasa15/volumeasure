@@ -8,7 +8,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { MapContainer, TileLayer, Polygon, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import {
@@ -18,7 +17,6 @@ import {
   Loader2,
   Mountain,
   Ruler,
-  Layers,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -84,23 +82,13 @@ function DotMarkers({ positions }: { positions: LatLng[] }) {
 
 // ── Map fit on open ───────────────────────────────────────────────────────────
 
-function FitOnOpen({
-  jobId,
-  open,
-  overlayReady,
-}: {
-  jobId: string;
-  open: boolean;
-  overlayReady: boolean;
-}) {
+function FitOnOpen({ jobId, open }: { jobId: string; open: boolean }) {
   const map = useMap();
 
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(async () => {
       map.invalidateSize();
-      if (overlayReady) return; // JpegOverlayLayer will fly to real bounds
-
       try {
         const res = await fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" });
         if (!res.ok) return;
@@ -120,105 +108,7 @@ function FitOnOpen({
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, jobId, overlayReady]);
-
-  return null;
-}
-
-// ── Orthophoto JPEG image overlay ─────────────────────────────────────────────
-// Uses the fast server-side JPEG + bounding box — no GeoTIFF download needed.
-
-function JpegOverlayLayer({
-  jobId,
-  opacity,
-  onLoadChange,
-  onError,
-  onReady,
-}: {
-  jobId: string;
-  opacity: number; // 0–100
-  onLoadChange?: (loading: boolean) => void;
-  onError?: () => void;
-  onReady?: (bounds: L.LatLngBoundsExpression) => void;
-}) {
-  const map = useMap();
-  const layerRef = useRef<L.ImageOverlay | null>(null);
-  const blobUrlRef = useRef<string | null>(null);
-
-  // Live opacity update without re-fetching
-  useEffect(() => {
-    layerRef.current?.setOpacity(opacity / 100);
-  }, [opacity]);
-
-  useEffect(() => {
-    let cancelled = false;
-    onLoadChange?.(true);
-
-    (async () => {
-      try {
-        // Fetch JPEG and bounding box in parallel
-        const [jpegRes, tileRes] = await Promise.all([
-          fetch(`/api/jobs/${jobId}/orthophoto-jpeg`, { credentials: "include" }),
-          fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" }),
-        ]);
-
-        if (!jpegRes.ok || !tileRes.ok || cancelled) {
-          onError?.();
-          return;
-        }
-
-        const [jpegBlob, tileJson] = await Promise.all([
-          jpegRes.blob(),
-          tileRes.json() as Promise<{ bounds?: [number, number, number, number] }>,
-        ]);
-
-        if (cancelled) return;
-
-        if (!tileJson.bounds) {
-          onError?.();
-          return;
-        }
-
-        const [west, south, east, north] = tileJson.bounds;
-        const bounds: L.LatLngBoundsExpression = [[south, west], [north, east]];
-
-        const blobUrl = URL.createObjectURL(jpegBlob);
-        blobUrlRef.current = blobUrl;
-
-        const layer = L.imageOverlay(blobUrl, bounds, { opacity: opacity / 100 });
-        layerRef.current = layer;
-        layer.addTo(map);
-
-        map.flyToBounds(bounds, {
-          padding: [32, 32],
-          maxZoom: 22,
-          animate: true,
-          duration: 1.0,
-        });
-
-        onReady?.(bounds);
-      } catch (err) {
-        console.error("[JpegOverlayLayer] Failed:", err);
-        if (!cancelled) onError?.();
-      } finally {
-        if (!cancelled) onLoadChange?.(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      const layer = layerRef.current;
-      if (layer) {
-        try { map.removeLayer(layer); } catch { /**/ }
-        layerRef.current = null;
-      }
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, map]);
+  }, [open, jobId]);
 
   return null;
 }
@@ -241,30 +131,21 @@ export function PolygonDrawer({
   onOpenChange,
   jobId,
   center,
-  tilesReady = false,
   onComplete,
   onMeasure,
   isSaving: externalSaving = false,
 }: Props) {
   const [vertices, setVertices] = useState<LatLng[]>([]);
-  const [orthophotoLoading, setOrthophotoLoading] = useState(false);
-  const [orthophotoError, setOrthophotoError] = useState(false);
-  const [overlayReady, setOverlayReady] = useState(false);
-  const [opacity, setOpacity] = useState(80);
   const [isCalculating, setIsCalculating] = useState(false);
   const [result, setResult] = useState<DrawerVolumeResult | null>(null);
 
   const defaultCenter: LatLng = center ?? [0, 0];
   const isSaving = externalSaving || isCalculating;
 
-  // Reset when dialog closes
   useEffect(() => {
     if (!open) {
       setVertices([]);
       setResult(null);
-      setOrthophotoError(false);
-      setOrthophotoLoading(false);
-      setOverlayReady(false);
     }
   }, [open]);
 
@@ -332,8 +213,6 @@ export function PolygonDrawer({
     );
   })();
 
-  const showOverlay = tilesReady && !orthophotoError;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
@@ -368,9 +247,6 @@ export function PolygonDrawer({
           <DialogDescription className="text-xs">
             Click on the map to place vertices around your stockpile. Place at least 3 points,
             then click Calculate Volume.
-            {showOverlay && overlayReady && " Orthophoto overlay active — adjust opacity with the slider."}
-            {showOverlay && orthophotoLoading && " Loading orthophoto overlay…"}
-            {tilesReady && orthophotoError && " Orthophoto overlay unavailable — using satellite basemap."}
           </DialogDescription>
         </DialogHeader>
 
@@ -396,27 +272,6 @@ export function PolygonDrawer({
           >
             <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear
           </Button>
-
-          {/* Opacity control — only when overlay is visible */}
-          {showOverlay && (overlayReady || orthophotoLoading) && (
-            <div className="flex items-center gap-2 ml-2 border-l border-border/40 pl-3">
-              <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
-                Overlay {opacity}%
-              </span>
-              <Slider
-                min={0}
-                max={100}
-                step={5}
-                value={[opacity]}
-                onValueChange={([v]) => setOpacity(v)}
-                className="w-24"
-              />
-              {orthophotoLoading && (
-                <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />
-              )}
-            </div>
-          )}
 
           <div className="flex-1" />
 
@@ -463,18 +318,7 @@ export function PolygonDrawer({
                 maxNativeZoom={19}
                 maxZoom={23}
               />
-
-              {showOverlay && open && (
-                <JpegOverlayLayer
-                  jobId={jobId}
-                  opacity={opacity}
-                  onLoadChange={setOrthophotoLoading}
-                  onError={() => setOrthophotoError(true)}
-                  onReady={() => setOverlayReady(true)}
-                />
-              )}
-
-              <FitOnOpen jobId={jobId} open={open} overlayReady={overlayReady} />
+              <FitOnOpen jobId={jobId} open={open} />
               {!result && <ClickCapture onMapClick={handleClick} />}
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
@@ -495,13 +339,6 @@ export function PolygonDrawer({
               No GPS coordinates available for this job.
             </div>
           )}
-
-          {/* Loading overlay badge */}
-          {showOverlay && orthophotoLoading && (
-            <div className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-mono px-2 py-1 rounded">
-              <Loader2 className="h-3 w-3 animate-spin" /> Loading orthophoto…
-            </div>
-          )}
         </div>
 
         {/* ── Result panel ────────────────────────────────────────────── */}
@@ -517,7 +354,6 @@ export function PolygonDrawer({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {/* Net volume */}
               <div className="bg-background/60 rounded-lg p-3 border border-border/50">
                 <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground uppercase mb-1">
                   <Mountain className="h-3 w-3" /> Net Volume
@@ -528,7 +364,6 @@ export function PolygonDrawer({
                 </div>
               </div>
 
-              {/* Cut */}
               {result.cutVolumeM3 != null && (
                 <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/30">
                   <div className="flex items-center gap-1.5 text-[10px] font-mono text-orange-400 uppercase mb-1">
@@ -541,7 +376,6 @@ export function PolygonDrawer({
                 </div>
               )}
 
-              {/* Fill */}
               {result.fillVolumeM3 != null && (
                 <div className="bg-sky-500/10 rounded-lg p-3 border border-sky-500/30">
                   <div className="flex items-center gap-1.5 text-[10px] font-mono text-sky-400 uppercase mb-1">
@@ -554,7 +388,6 @@ export function PolygonDrawer({
                 </div>
               )}
 
-              {/* Area */}
               <div className="bg-background/60 rounded-lg p-3 border border-border/50">
                 <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground uppercase mb-1">
                   <Ruler className="h-3 w-3" /> Area
@@ -565,7 +398,6 @@ export function PolygonDrawer({
                 </div>
               </div>
 
-              {/* Geometric fallback — show placeholder cut/fill cards */}
               {result.cutVolumeM3 == null && (
                 <>
                   <div className="bg-background/40 rounded-lg p-3 border border-dashed border-border/40 flex flex-col items-center justify-center gap-1">
