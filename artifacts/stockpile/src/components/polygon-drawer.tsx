@@ -109,12 +109,8 @@ function FitOnOpen({
         const [west, south, east, north] = data.bounds;
         const leafletBounds: OrthophotoBounds = [[south, west], [north, east]];
         onBounds(leafletBounds);
-        map.flyToBounds(leafletBounds, {
-          padding: [32, 32],
-          maxZoom: 20,
-          animate: true,
-          duration: 1.0,
-        });
+        // Instant fit — no animation so the user can start drawing immediately
+        map.fitBounds(leafletBounds, { padding: [24, 24], maxZoom: 20 });
       } catch {
         // silent
       }
@@ -220,10 +216,10 @@ export function PolygonDrawer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-5xl w-[calc(100vw-2rem)] h-[95dvh] flex flex-col gap-0 p-0 overflow-hidden">
 
         {/* ── Orthophoto banner ──────────────────────────────────────────── */}
-        <div className="relative w-full h-[90px] overflow-hidden shrink-0 bg-muted/20">
+        <div className="relative w-full h-[60px] overflow-hidden shrink-0 bg-muted/20">
           <img
             src={orthoUrl}
             alt="NodeODM orthophoto"
@@ -247,7 +243,7 @@ export function PolygonDrawer({
           </div>
         </div>
 
-        <DialogHeader className="px-6 pt-4 pb-3">
+        <DialogHeader className="px-6 pt-3 pb-2 shrink-0">
           <DialogTitle className="font-mono uppercase tracking-wider">
             Draw Measurement Polygon
           </DialogTitle>
@@ -258,7 +254,7 @@ export function PolygonDrawer({
         </DialogHeader>
 
         {/* ── Toolbar ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 flex-wrap px-6 py-2 border-b border-border/40 bg-card/30">
+        <div className="flex items-center gap-2 flex-wrap px-6 py-2 border-b border-border/40 bg-card/30 shrink-0">
           <Button
             type="button"
             variant="outline"
@@ -331,7 +327,7 @@ export function PolygonDrawer({
         </div>
 
         {/* ── Map ─────────────────────────────────────────────────────────── */}
-        <div className="relative flex-1 min-h-0" style={{ height: "400px" }}>
+        <div className="relative flex-1 min-h-0">
           {center ? (
             <MapContainer
               center={defaultCenter}
@@ -383,7 +379,7 @@ export function PolygonDrawer({
 
         {/* ── Result panel ────────────────────────────────────────────────── */}
         {result && (
-          <div className="px-6 py-4 border-t border-border/40 bg-card/50">
+          <div className="px-6 py-4 border-t border-border/40 bg-card/50 shrink-0 max-h-[220px] overflow-y-auto">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
               <span className="text-xs font-mono uppercase text-emerald-400 tracking-wider font-bold">
@@ -471,7 +467,7 @@ export function PolygonDrawer({
         )}
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
-        <DialogFooter className="px-6 py-3 border-t border-border/40 bg-card/20">
+        <DialogFooter className="px-6 py-3 border-t border-border/40 bg-card/20 shrink-0">
           {result ? (
             <Button
               size="sm"
