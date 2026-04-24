@@ -38,18 +38,13 @@ type Props = {
   onExport: (filename: string, content: string) => void;
 };
 
-const DEFAULT_PROJECTION = "+proj=cartesian";
+const DEFAULT_PROJECTION = "EPSG:4326";
 
 const PROJECTION_PRESETS = [
-  "+proj=cartesian",
-  "+proj=longlat +datum=WGS84 +no_defs",
-  "+proj=utm +zone=1 +datum=WGS84 +units=m +no_defs",
-  "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs",
-  "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs",
-  "+proj=utm +zone=48 +datum=WGS84 +units=m +no_defs",
-  "+proj=utm +zone=50 +datum=WGS84 +units=m +no_defs",
+  // Geographic (lat/lon)
   "EPSG:4326",
-  "EPSG:3857",
+  "+proj=longlat +datum=WGS84 +no_defs",
+  // UTM North
   "EPSG:32601",
   "EPSG:32610",
   "EPSG:32614",
@@ -58,8 +53,26 @@ const PROJECTION_PRESETS = [
   "EPSG:32650",
   "EPSG:32654",
   "EPSG:32655",
+  "WGS84 UTM 1N",
+  "WGS84 UTM 10N",
+  "WGS84 UTM 33N",
   "WGS84 UTM 48N",
   "WGS84 UTM 50N",
+  // UTM South
+  "EPSG:32748",
+  "EPSG:32750",
+  "EPSG:32754",
+  "EPSG:32755",
+  "WGS84 UTM 48S",
+  "WGS84 UTM 50S",
+  "WGS84 UTM 54S",
+  "WGS84 UTM 55S",
+  // proj4 strings
+  "+proj=utm +zone=1 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=48 +south +datum=WGS84 +units=m +no_defs",
+  "+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs",
 ];
 
 export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
@@ -177,6 +190,10 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
                     </span>
                   </div>
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Must be a real CRS — EPSG code, WGS84 UTM, or valid proj4.{" "}
+                  <span className="text-amber-400">+proj=cartesian is not accepted by NodeODM.</span>
+                </p>
                 <Select
                   value={activeImageName}
                   onValueChange={(v) => setActiveImageName(v)}

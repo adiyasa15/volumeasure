@@ -98,6 +98,31 @@ export default function NewJob() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const validateGcpProjection = (content: string): string | null => {
+    const firstLine = content
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0 && !l.startsWith("#"));
+    if (!firstLine) return "GCP file appears to be empty.";
+
+    const epsgPattern = /^EPSG:\d+$/i;
+    const wgsUtmPattern = /^WGS84\s+UTM\s+\d+(N|S)$/i;
+    const proj4Pattern = /^\+proj=(utm|longlat|lcc|tmerc|merc|omerc|stere|poly|aea|sinu|moll)\b/i;
+
+    if (epsgPattern.test(firstLine) || wgsUtmPattern.test(firstLine) || proj4Pattern.test(firstLine)) {
+      return null;
+    }
+
+    return (
+      `Invalid projection on line 1: "${firstLine}"\n\n` +
+      `NodeODM requires one of:\n` +
+      `• EPSG:XXXXX  (e.g. EPSG:32748 for UTM 48S)\n` +
+      `• WGS84 UTM XXN / WGS84 UTM XXS  (e.g. WGS84 UTM 48S)\n` +
+      `• Valid proj4 string  (e.g. +proj=utm +zone=48 +south +datum=WGS84 +units=m +no_defs)\n\n` +
+      `"+proj=cartesian" is not accepted.`
+    );
+  };
+
   const handleGcpSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -111,14 +136,26 @@ export default function NewJob() {
       return;
     }
     const content = await file.text();
+    const projError = validateGcpProjection(content);
+    if (projError) {
+      toast({
+        title: "Invalid GCP projection",
+        description: projError,
+        variant: "destructive",
+      });
+      if (gcpInputRef.current) gcpInputRef.current.value = "";
+      return;
+    }
     setGcpFile({ name: file.name, content });
   };
 
   const downloadSampleGcp = () => {
     const sample =
-      'WGS84 UTM 31N\n' +
-      '0 0 0 0 0 "mark_start"\n' +
-      '1 0 0 0 0 "mark_end"\n';
+      "EPSG:32748\n" +
+      "# geo_x(easting) geo_y(northing) geo_z(m) im_x(px) im_y(px) image_name [label]\n" +
+      "431234.567 9876543.210 45.2  1024  768  DJI_0001.JPG GCP1\n" +
+      "431350.123 9876600.456 44.8  2048 1536  DJI_0002.JPG GCP2\n" +
+      "431210.789 9876700.321 46.1   512 1024  DJI_0003.JPG GCP3\n";
     const blob = new Blob([sample], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
