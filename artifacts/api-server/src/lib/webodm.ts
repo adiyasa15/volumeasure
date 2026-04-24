@@ -59,6 +59,11 @@ export async function createTaskInit(
       { name: "dsm", value: true },
       { name: "orthophoto-resolution", value: 5 },
       { name: "feature-quality", value: "high" },
+      // Keep output assets on local disk so our server can fetch them for
+      // orthophoto JPEG caching. spark1.webodm.net defaults this to true,
+      // which causes it to upload to S3 and delete local files immediately
+      // after completion — making all /assets/* paths return 404 at once.
+      { name: "optimize-disk-space", value: false },
     ];
     // When a GCP file is provided, tell NodeODM to trust GCP over GPS EXIF
     if (opts.gcpFile) {
@@ -281,49 +286,125 @@ export function orthophotoAssetUrl(uuid: string): string {
 }
 
 /**
- * Download odm_orthophoto.tif from NodeODM and convert it to a JPEG thumbnail
- * using sharp (native libvips — much faster than client-side georaster parsing).
- * Returns a JPEG Buffer sized ≤800×800 px, or null on failure.
+ * Convert a GeoTIFF Buffer to a JPEG thumbnail using sharp.
+ * Returns a JPEG Buffer ≤800×800 px, or null on failure.
  */
-export async function fetchOrthophotoJpeg(uuid: string): Promise<Buffer | null> {
-  if (!token()) return null;
+async function tiffToJpeg(tiffBuf: Buffer, uuid: string): Promise<Buffer | null> {
+  try {
+    const { default: sharp } = await import("sharp");
+    return await sharp(tiffBuf, { limitInputPixels: false })
+      .flatten({ background: "#ffffff" })
+      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+  } catch (err) {
+    logger.error({ err, uuid }, "sharp TIFF→JPEG conversion failed");
+    return null;
+  }
+}
 
-  let arrayBuffer: ArrayBuffer;
+/**
+ * Try to download the orthophoto GeoTIFF via the direct asset path.
+ * Returns the raw Buffer, or null if unavailable.
+ */
+async function fetchOrthophotoTiff(uuid: string): Promise<Buffer | null> {
   try {
     const res = await fetch(qs(`/task/${uuid}/assets/odm_orthophoto/odm_orthophoto.tif`));
     if (!res.ok) {
       logger.warn({ uuid, status: res.status }, "Orthophoto GeoTIFF download failed");
       return null;
     }
-    // Guard: NodeODM returns JSON errors with HTTP 200 when assets have expired
     const ct = res.headers.get("Content-Type") ?? "";
     if (ct.includes("application/json") || ct.includes("text/")) {
       logger.warn({ uuid, contentType: ct }, "Orthophoto response is not a TIFF (assets expired?)");
       return null;
     }
-    arrayBuffer = await res.arrayBuffer();
-    // Minimum sanity check: a GeoTIFF is at least a few KB
-    if (arrayBuffer.byteLength < 1024) {
-      logger.warn({ uuid, bytes: arrayBuffer.byteLength }, "Orthophoto response too small to be a valid TIFF");
+    const ab = await res.arrayBuffer();
+    if (ab.byteLength < 1024) {
+      logger.warn({ uuid, bytes: ab.byteLength }, "Orthophoto response too small to be a valid TIFF");
       return null;
     }
+    return Buffer.from(ab);
   } catch (err) {
     logger.error({ err, uuid }, "Orthophoto fetch error");
     return null;
   }
+}
 
+/**
+ * Fallback: download the all.zip from the NodeODM S3 redirect and extract
+ * odm_orthophoto/odm_orthophoto.tif from the ZIP buffer using unzipper.
+ *
+ * NodeODM with optimize-disk-space=true (server default on spark1.webodm.net)
+ * uploads outputs to S3 and removes local files. The /download/all.zip endpoint
+ * does a 301 redirect to the S3 bucket where the zip is still available.
+ *
+ * Strategy: download the full zip into a Buffer, then use unzipper.Open.buffer
+ * for random-access extraction without streaming backpressure issues.
+ * The result is cached in the DB so this expensive download only happens once.
+ */
+async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> {
   try {
-    const { default: sharp } = await import("sharp");
-    const jpegBuffer = await sharp(Buffer.from(arrayBuffer), { limitInputPixels: false })
-      .flatten({ background: "#ffffff" }) // alpha → white (JPEG has no transparency)
-      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer();
-    return jpegBuffer;
+    logger.info({ uuid }, "Downloading all.zip from S3 for orthophoto extraction");
+    const res = await fetch(qs(`/task/${uuid}/download/all.zip`), { redirect: "follow" });
+    if (!res.ok) {
+      logger.warn({ uuid, status: res.status }, "all.zip download failed");
+      return null;
+    }
+    const zipBuf = Buffer.from(await res.arrayBuffer());
+    logger.info({ uuid, bytes: zipBuf.byteLength }, "all.zip downloaded");
+
+    const unzipper = await import("unzipper");
+    const directory = await (unzipper as any).Open.buffer(zipBuf);
+
+    const entry = (directory.files as Array<{ path: string; stream: () => NodeJS.ReadableStream }>)
+      .find((f) => f.path.endsWith("odm_orthophoto.tif"));
+
+    if (!entry) {
+      logger.warn({ uuid, entries: (directory.files as any[]).length }, "odm_orthophoto.tif not found in all.zip");
+      return null;
+    }
+
+    logger.info({ uuid, entry: entry.path }, "Extracting orthophoto from all.zip");
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      entry.stream()
+        .on("data", (chunk: Buffer) => chunks.push(chunk))
+        .on("end", resolve)
+        .on("error", reject);
+    });
+    return Buffer.concat(chunks);
   } catch (err) {
-    logger.error({ err, uuid }, "sharp TIFF→JPEG conversion failed");
+    logger.error({ err, uuid }, "fetchOrthophotoTiffFromZip error");
     return null;
   }
+}
+
+/**
+ * Download odm_orthophoto.tif from NodeODM and convert it to a JPEG thumbnail
+ * using sharp (native libvips — much faster than client-side georaster parsing).
+ *
+ * Strategy:
+ *  1. Try the direct asset path (works when optimize-disk-space=false).
+ *  2. Fall back to extracting odm_orthophoto.tif from the all.zip S3 download
+ *     (handles tasks that ran with optimize-disk-space=true on spark1.webodm.net).
+ *
+ * Returns a JPEG Buffer sized ≤800×800 px, or null on failure.
+ */
+export async function fetchOrthophotoJpeg(uuid: string): Promise<Buffer | null> {
+  if (!token()) return null;
+
+  // 1. Direct asset path (fast path, works for optimize-disk-space=false tasks)
+  let tiffBuf = await fetchOrthophotoTiff(uuid);
+
+  // 2. Fallback: extract from all.zip via S3 redirect
+  if (!tiffBuf) {
+    logger.info({ uuid }, "Falling back to all.zip extraction for orthophoto");
+    tiffBuf = await fetchOrthophotoTiffFromZip(uuid);
+  }
+
+  if (!tiffBuf) return null;
+  return tiffToJpeg(tiffBuf, uuid);
 }
 
 // ---------------------------------------------------------------------------

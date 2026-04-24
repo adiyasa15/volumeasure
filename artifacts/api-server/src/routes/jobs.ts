@@ -337,21 +337,23 @@ router.post("/:id/refresh", async (req: AuthedRequest, res) => {
         // Signal that NodeODM assets (bounds etc.) are accessible.
         // On the FIRST transition to completed, proactively fetch & cache the
         // orthophoto JPEG so it remains available after NodeODM expires assets.
+        // Also retry for jobs that completed but whose orthophoto was never
+        // cached (e.g. when optimize-disk-space=true caused immediate 404).
         if (!nextOrthophotoUrl) {
           nextOrthophotoUrl = "tiles_ready";
-          if (!row.orthophotoJpegB64) {
-            try {
-              const jpegBuf = await fetchOrthophotoJpeg(row.webodmTaskId!);
-              if (jpegBuf) {
-                await db
-                  .update(jobsTable)
-                  .set({ orthophotoJpegB64: jpegBuf.toString("base64") })
-                  .where(eq(jobsTable.id, row.id));
-                logger.info({ jobId: row.id }, "Orthophoto JPEG cached in DB on completion");
-              }
-            } catch (err) {
-              logger.warn({ err, jobId: row.id }, "Failed to cache orthophoto JPEG on completion");
+        }
+        if (!row.orthophotoJpegB64) {
+          try {
+            const jpegBuf = await fetchOrthophotoJpeg(row.webodmTaskId!);
+            if (jpegBuf) {
+              await db
+                .update(jobsTable)
+                .set({ orthophotoJpegB64: jpegBuf.toString("base64") })
+                .where(eq(jobsTable.id, row.id));
+              logger.info({ jobId: row.id }, "Orthophoto JPEG cached in DB on completion");
             }
+          } catch (err) {
+            logger.warn({ err, jobId: row.id }, "Failed to cache orthophoto JPEG on completion");
           }
         }
       }
