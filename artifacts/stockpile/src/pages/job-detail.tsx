@@ -488,6 +488,16 @@ export default function JobDetail() {
                   <div className="text-xs text-muted-foreground font-mono uppercase mb-1">Job ID</div>
                   <div className="font-mono uppercase font-medium text-xs truncate" title={job.id}>{job.id.substring(0, 8)}...</div>
                 </div>
+                <div>
+                  <div className="text-xs text-muted-foreground font-mono uppercase mb-1">GCP</div>
+                  <div className={`font-mono uppercase font-medium flex items-center gap-1.5 ${job.gcpEnabled ? "text-primary" : "text-muted-foreground"}`}>
+                    {job.gcpEnabled ? (
+                      <><CheckCircle2 className="h-3.5 w-3.5" /> Yes</>
+                    ) : (
+                      <><AlertCircle className="h-3.5 w-3.5 opacity-40" /> No</>
+                    )}
+                  </div>
+                </div>
               </div>
               
               {job.notes && (
