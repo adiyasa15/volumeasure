@@ -95,8 +95,9 @@ export async function createTaskInit(
       // after completion — making all /assets/* paths return 404 at once.
       { name: "optimize-disk-space", value: false },
     ];
-    // When a GCP file is provided, tell NodeODM to trust GCP over GPS EXIF
+    // When a GCP file is provided, tell NodeODM to use it for georeferencing
     if (opts.gcpFile) {
+      options.push({ name: "manual-gcp", value: true });
       options.push({ name: "force-gps", value: false });
     }
 
