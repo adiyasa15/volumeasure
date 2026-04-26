@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { MapContainer, TileLayer, ImageOverlay, Polygon, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -22,6 +24,8 @@ import {
   TrendingDown,
   Minus,
   Layers,
+  Pencil,
+  Save,
 } from "lucide-react";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -109,7 +113,6 @@ function FitOnOpen({
         const [west, south, east, north] = data.bounds;
         const leafletBounds: OrthophotoBounds = [[south, west], [north, east]];
         onBounds(leafletBounds);
-        // Instant fit — no animation so the user can start drawing immediately
         map.fitBounds(leafletBounds, { padding: [24, 24], maxZoom: 20 });
       } catch {
         // silent
@@ -133,6 +136,14 @@ type Props = {
   onComplete?: (result: DrawerVolumeResult) => void;
   isSaving?: boolean;
   onMeasure?: (coords: number[][]) => void;
+  /** Edit-mode: pre-load existing polygon vertices */
+  initialVertices?: [number, number][];
+  /** Edit-mode: current job name shown in editable field */
+  initialJobName?: string;
+  /** Edit-mode: called with new name when user saves */
+  onSaveName?: (name: string) => Promise<void>;
+  /** "draw" = new polygon (default), "edit" = editing existing polygon */
+  mode?: "draw" | "edit";
 };
 
 export function PolygonDrawer({
@@ -143,6 +154,10 @@ export function PolygonDrawer({
   onComplete,
   onMeasure,
   isSaving: externalSaving = false,
+  initialVertices,
+  initialJobName,
+  onSaveName,
+  mode = "draw",
 }: Props) {
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -150,18 +165,28 @@ export function PolygonDrawer({
   const [orthoBounds, setOrthoBounds] = useState<OrthophotoBounds | null>(null);
   const [orthoOpacity, setOrthoOpacity] = useState(0.8);
 
-  const defaultCenter: LatLng = center ?? [0, 0];
-  const isSaving = externalSaving || isCalculating;
+  // Name editing (edit mode)
+  const [editedName, setEditedName] = useState(initialJobName ?? "");
+  const [isSavingName, setIsSavingName] = useState(false);
 
-  // The orthophoto JPEG URL — served by our API with auth cookie
+  const defaultCenter: LatLng = center ?? [0, 0];
+  const isSaving = externalSaving || isCalculating || isSavingName;
+
   const orthoUrl = `/api/jobs/${jobId}/orthophoto-jpeg`;
 
+  // On open, seed initial vertices and name
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setVertices(initialVertices ? (initialVertices as LatLng[]) : []);
+      setResult(null);
+      setOrthoBounds(null);
+      setEditedName(initialJobName ?? "");
+    } else {
       setVertices([]);
       setResult(null);
       setOrthoBounds(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const handleClick = (latlng: LatLng) => {
@@ -203,6 +228,12 @@ export function PolygonDrawer({
         areaSqm:      updated.areaSqm ?? 0,
         method:       updated.cutVolumeM3 != null ? "dsm" : "geometric",
       };
+
+      // In edit mode: save name simultaneously if it changed
+      if (mode === "edit" && onSaveName && editedName.trim() && editedName.trim() !== initialJobName) {
+        await onSaveName(editedName.trim());
+      }
+
       setResult(drawerResult);
       onComplete?.(drawerResult);
     } catch {
@@ -210,9 +241,27 @@ export function PolygonDrawer({
     } finally {
       setIsCalculating(false);
     }
-  }, [vertices, jobId, onMeasure, onComplete]);
+  }, [vertices, jobId, onMeasure, onComplete, mode, onSaveName, editedName, initialJobName]);
+
+  // Save name only (no polygon recalculation)
+  const handleSaveNameOnly = useCallback(async () => {
+    if (!onSaveName || !editedName.trim()) return;
+    setIsSavingName(true);
+    try {
+      await onSaveName(editedName.trim());
+      onOpenChange(false);
+    } catch {
+      console.error("Name save failed");
+    } finally {
+      setIsSavingName(false);
+    }
+  }, [onSaveName, editedName, onOpenChange]);
 
   const polyPositions: LatLng[] = vertices.length >= 2 ? [...vertices, vertices[0]] : vertices;
+
+  const isEdit = mode === "edit";
+  const nameChanged = editedName.trim() !== (initialJobName ?? "").trim();
+  const hasVertices = vertices.length >= 3;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,7 +282,7 @@ export function PolygonDrawer({
           <div className="absolute inset-x-0 top-0 px-6 pt-4">
             <p className="text-[10px] font-mono uppercase tracking-widest text-white/70 flex items-center gap-1.5">
               <Layers className="h-2.5 w-2.5" />
-              NodeODM Orthophoto · Survey Overview
+              {isEdit ? "Edit Measurement · Orthophoto Overlay" : "NodeODM Orthophoto · Survey Overview"}
             </p>
             {center && (
               <p className="text-[10px] font-mono text-white/50 mt-0.5">
@@ -244,14 +293,49 @@ export function PolygonDrawer({
         </div>
 
         <DialogHeader className="px-6 pt-3 pb-2 shrink-0">
-          <DialogTitle className="font-mono uppercase tracking-wider">
-            Draw Measurement Polygon
+          <DialogTitle className="font-mono uppercase tracking-wider flex items-center gap-2">
+            {isEdit ? <Pencil className="h-4 w-4 text-primary" /> : null}
+            {isEdit ? "Edit Measurement" : "Draw Measurement Polygon"}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Click on the map to place vertices around your stockpile. Place at least 3 points,
-            then click Calculate Volume.
+            {isEdit
+              ? "Update the job name and/or redraw the polygon to recalculate volume."
+              : "Click on the map to place vertices around your stockpile. Place at least 3 points, then click Calculate Volume."}
           </DialogDescription>
         </DialogHeader>
+
+        {/* ── Name editor (edit mode only) ────────────────────────────────── */}
+        {isEdit && (
+          <div className="px-6 pb-2 shrink-0 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <Label className="text-xs font-mono uppercase text-muted-foreground whitespace-nowrap shrink-0">
+                Job Name
+              </Label>
+              <Input
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                className="h-8 font-mono text-sm bg-background/50 border-border/60 flex-1"
+                placeholder="Enter measurement name…"
+                disabled={isSaving}
+              />
+              {nameChanged && !hasVertices && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 font-mono uppercase text-xs shrink-0"
+                  onClick={handleSaveNameOnly}
+                  disabled={isSaving || !editedName.trim()}
+                >
+                  {isSavingName ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <><Save className="h-3.5 w-3.5 mr-1.5" /> Save Name</>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Toolbar ─────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 flex-wrap px-6 py-2 border-b border-border/40 bg-card/30 shrink-0">
@@ -303,7 +387,7 @@ export function PolygonDrawer({
             {result ? (
               <span className="text-emerald-400">Volume calculated</span>
             ) : vertices.length === 0 ? (
-              "Click the map to start drawing"
+              isEdit ? "Redraw polygon or keep existing" : "Click the map to start drawing"
             ) : vertices.length < 3 ? (
               `${3 - vertices.length} more point${3 - vertices.length > 1 ? "s" : ""} needed`
             ) : (
@@ -321,7 +405,7 @@ export function PolygonDrawer({
             {isSaving ? (
               <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Calculating…</>
             ) : (
-              <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Calculate Volume</>
+              <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> {isEdit ? "Recalculate" : "Calculate Volume"}</>
             )}
           </Button>
         </div>

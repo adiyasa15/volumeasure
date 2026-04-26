@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2, FileDown } from "lucide-react";
+import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2, FileDown, Pencil } from "lucide-react";
 import { generateJobReport } from "@/lib/report";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +48,7 @@ export default function JobDetail() {
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [polygonDrawerOpen, setPolygonDrawerOpen] = useState(false);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   // Auto-poll every 15 s while queued or running.
   // Uses setQueryData from the mutation result to avoid a double-fetch.
@@ -148,7 +149,16 @@ export default function JobDetail() {
     job.volumeM3 == null;
 
   const handleDrawerComplete = () => {
-    // Refresh job data from server after the drawer saves the polygon
+    queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
+  };
+
+  const handleSaveNameDetail = async (name: string) => {
+    await fetch(`/api/jobs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
+    });
     queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
   };
 
@@ -201,6 +211,15 @@ export default function JobDetail() {
           >
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isRefreshing || refreshJob.isPending ? 'animate-spin' : ''}`} /> 
             Refresh
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="font-mono uppercase text-xs"
+            onClick={() => setEditDrawerOpen(true)}
+          >
+            <Pencil className="mr-2 h-3.5 w-3.5" /> Edit
           </Button>
 
           {isCompleted && (
@@ -525,6 +544,7 @@ export default function JobDetail() {
         </div>
       </div>
 
+      {/* Draw mode — initial polygon for manual jobs */}
       <PolygonDrawer
         open={polygonDrawerOpen}
         onOpenChange={setPolygonDrawerOpen}
@@ -535,6 +555,23 @@ export default function JobDetail() {
             : null
         }
         tilesReady={job.orthophotoUrl === "tiles_ready"}
+        onComplete={handleDrawerComplete}
+      />
+
+      {/* Edit mode — rename + redraw + recalculate */}
+      <PolygonDrawer
+        open={editDrawerOpen}
+        onOpenChange={setEditDrawerOpen}
+        jobId={id}
+        center={
+          job.latitude != null && job.longitude != null
+            ? [job.latitude, job.longitude]
+            : null
+        }
+        mode="edit"
+        initialVertices={(job.polygonCoordinates as [number, number][] | null) ?? []}
+        initialJobName={job.name}
+        onSaveName={handleSaveNameDetail}
         onComplete={handleDrawerComplete}
       />
     </div>

@@ -151,6 +151,37 @@ router.get("/:id", async (req: AuthedRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// PATCH /api/jobs/:id — update editable fields (name, notes)
+// ---------------------------------------------------------------------------
+router.patch("/:id", async (req: AuthedRequest, res) => {
+  const parsed = GetJobParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const { name, notes } = req.body as { name?: string; notes?: string };
+  if (!name && notes === undefined) {
+    res.status(400).json({ error: "Provide at least name or notes" });
+    return;
+  }
+  const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+  if (typeof name === "string" && name.trim()) updateFields.name = name.trim();
+  if (typeof notes === "string") updateFields.notes = notes.trim() || null;
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set(updateFields as any)
+    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json(rowToJob(updated));
+});
+
+// ---------------------------------------------------------------------------
 // DELETE /api/jobs/:id — delete job + remove NodeODM task
 // ---------------------------------------------------------------------------
 router.delete("/:id", async (req: AuthedRequest, res) => {

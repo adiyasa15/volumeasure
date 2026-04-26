@@ -1,31 +1,56 @@
-import { useListJobs } from "@workspace/api-client-react";
+import { useListJobs, getListJobsQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PolygonDrawer } from "@/components/polygon-drawer";
 import { format } from "date-fns";
-import { Loader2, Plus, Search, Layers, Pickaxe } from "lucide-react";
+import { Loader2, Plus, Search, Layers, Pickaxe, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+
+type EditTarget = {
+  id: string;
+  name: string;
+  center: [number, number] | null;
+  initialVertices: [number, number][];
+};
 
 export default function Jobs() {
   const { data: jobs, isLoading } = useListJobs();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [materialFilter, setMaterialFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
-    
     return jobs.filter((job) => {
       const matchesSearch = job.name.toLowerCase().includes(search.toLowerCase());
       const matchesMaterial = materialFilter === "all" || job.materialType === materialFilter;
       const matchesStatus = statusFilter === "all" || job.status === statusFilter;
-      
       return matchesSearch && matchesMaterial && matchesStatus;
     });
   }, [jobs, search, materialFilter, statusFilter]);
+
+  const handleSaveName = async (name: string) => {
+    if (!editTarget) return;
+    await fetch(`/api/jobs/${editTarget.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name }),
+    });
+    queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+  };
+
+  const handleEditComplete = () => {
+    queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    setEditTarget(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -88,8 +113,8 @@ export default function Jobs() {
             <Layers className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
             <h3 className="text-lg font-bold font-mono uppercase mb-1">No jobs found</h3>
             <p className="text-muted-foreground max-w-sm">
-              {jobs?.length === 0 
-                ? "You haven't created any measurement jobs yet." 
+              {jobs?.length === 0
+                ? "You haven't created any measurement jobs yet."
                 : "No jobs match your current search filters."}
             </p>
             {jobs?.length === 0 && (
@@ -108,6 +133,7 @@ export default function Jobs() {
                   <TableHead className="font-mono uppercase text-xs">Status</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
+                  <TableHead className="font-mono uppercase text-xs text-right w-[80px]">Edit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -119,7 +145,9 @@ export default function Jobs() {
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono text-sm uppercase text-muted-foreground">
-                      {job.materialType}
+                      <span className="flex items-center gap-1.5">
+                        <Pickaxe className="h-3.5 w-3.5" /> {job.materialType}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {job.status === 'completed' ? (
@@ -143,6 +171,27 @@ export default function Jobs() {
                     <TableCell className="text-right text-muted-foreground text-sm font-mono">
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Edit measurement"
+                        onClick={() =>
+                          setEditTarget({
+                            id: job.id,
+                            name: job.name,
+                            center:
+                              job.latitude != null && job.longitude != null
+                                ? [job.latitude, job.longitude]
+                                : null,
+                            initialVertices: (job.polygonCoordinates as [number, number][] | null) ?? [],
+                          })
+                        }
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -150,6 +199,21 @@ export default function Jobs() {
           </div>
         )}
       </Card>
+
+      {/* Edit dialog */}
+      {editTarget && (
+        <PolygonDrawer
+          open={!!editTarget}
+          onOpenChange={(v) => { if (!v) setEditTarget(null); }}
+          jobId={editTarget.id}
+          center={editTarget.center}
+          mode="edit"
+          initialVertices={editTarget.initialVertices}
+          initialJobName={editTarget.name}
+          onSaveName={handleSaveName}
+          onComplete={handleEditComplete}
+        />
+      )}
     </div>
   );
 }
