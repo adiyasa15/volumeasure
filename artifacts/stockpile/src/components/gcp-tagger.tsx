@@ -201,14 +201,14 @@ export function GcpTagger({ open, onOpenChange, images, onExport }: Props) {
                   <SelectTrigger className="font-mono text-xs">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-52 overflow-y-auto">
                     {images.map((img) => {
                       const count = points.filter(
                         (p) => p.imageName === img.name,
                       ).length;
                       return (
-                        <SelectItem key={img.name} value={img.name}>
-                          {img.name} {count > 0 ? `(${count})` : ""}
+                        <SelectItem key={img.name} value={img.name} className="font-mono text-xs">
+                          {img.name} {count > 0 ? `(${count} pts)` : ""}
                         </SelectItem>
                       );
                     })}
