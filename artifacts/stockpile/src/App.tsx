@@ -93,14 +93,15 @@ function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 relative">
       <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
-      <div className="relative z-10 flex flex-col items-center gap-4">
+      {/* Admin link — fixed to top-right, always visible */}
+      <a
+        href={`${basePath}/admin-login`}
+        className="fixed top-4 right-4 z-50 text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors border border-border/50 hover:border-primary/50 rounded px-3 py-1.5 bg-background/80 backdrop-blur"
+      >
+        Admin Access →
+      </a>
+      <div className="relative z-10">
         <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
-        <a
-          href={`${basePath}/admin-login`}
-          className="text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
-        >
-          Admin / Superadmin Access →
-        </a>
       </div>
     </div>
   );
