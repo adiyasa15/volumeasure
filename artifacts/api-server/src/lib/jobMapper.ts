@@ -1,7 +1,9 @@
 import type { JobRow, StoredImage } from "@workspace/db";
 
-export function rowToJob(row: JobRow) {
+export function rowToJob(row: JobRow, ownerName?: string | null, ownerEmail?: string | null) {
   return {
+    ownerName: ownerName ?? null,
+    ownerEmail: ownerEmail ?? null,
     id: row.id,
     name: row.name,
     materialType: row.materialType as "sand" | "soil" | "coal",

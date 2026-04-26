@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PolygonDrawer } from "@/components/polygon-drawer";
 import { format } from "date-fns";
-import { Loader2, Plus, Search, Layers, Pickaxe, Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import { Loader2, Plus, Search, Layers, Pickaxe, Pencil, Trash2, MoreHorizontal, User } from "lucide-react";
+import { useUserProfile } from "@/context/UserProfileContext";
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +42,8 @@ export default function Jobs() {
   const deleteJob = useDeleteJob();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { profile } = useUserProfile();
+  const isElevated = profile?.role === "super_admin" || profile?.role === "admin";
 
   const [search, setSearch] = useState("");
   const [materialFilter, setMaterialFilter] = useState<string>("all");
@@ -167,6 +170,9 @@ export default function Jobs() {
                   <TableHead className="font-mono uppercase text-xs">Material</TableHead>
                   <TableHead className="font-mono uppercase text-xs">Status</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
+                  {isElevated && (
+                    <TableHead className="font-mono uppercase text-xs">Owner</TableHead>
+                  )}
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
                   <TableHead className="w-[48px]" />
                 </TableRow>
@@ -203,6 +209,14 @@ export default function Jobs() {
                     <TableCell className="text-right font-mono font-medium">
                       {job.volumeM3 ? job.volumeM3.toLocaleString() : '-'}
                     </TableCell>
+                    {isElevated && (
+                      <TableCell className="text-sm text-muted-foreground font-mono">
+                        <span className="flex items-center gap-1.5">
+                          <User className="h-3 w-3 shrink-0" />
+                          {(job as any).ownerName || (job as any).ownerEmail || <span className="opacity-50">—</span>}
+                        </span>
+                      </TableCell>
+                    )}
                     <TableCell className="text-right text-muted-foreground text-sm font-mono">
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
                     </TableCell>

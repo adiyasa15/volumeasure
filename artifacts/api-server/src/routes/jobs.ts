@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, not } from "drizzle-orm";
+import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import { db, jobsTable, userProfilesTable, type StoredImage } from "@workspace/db";
 import {
   CreateJobBody,
@@ -35,6 +35,21 @@ import {
 const router: IRouter = Router();
 router.use(requireAuth, requireApproved);
 
+/** Returns true if the role can read/write any job regardless of ownership. */
+function canAccessAnyJob(role?: string) {
+  return role === "super_admin" || role === "admin";
+}
+
+/** Drizzle WHERE condition: id match + optional ownership filter based on role. */
+function jobByIdCondition(id: string, req: AuthedRequest) {
+  const idCond = eq(jobsTable.id, id);
+  if (canAccessAnyJob(req.userRole)) return idCond;
+  return and(idCond, eq(jobsTable.userId, req.userId!));
+}
+
+/** LEFT JOIN condition matching userId to clerk_user_id OR username. */
+const ownerJoinCond = sql`${jobsTable.userId} = ${userProfilesTable.clerkUserId} OR ${jobsTable.userId} = ${userProfilesTable.username}`;
+
 /** Multer instance — keeps files in memory for NodeODM proxying. */
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -50,13 +65,20 @@ const upload = multer({
 router.get("/", async (req: AuthedRequest, res) => {
   const role = req.userRole!;
 
+  const selectWithOwner = {
+    job: jobsTable,
+    ownerName: userProfilesTable.displayName,
+    ownerEmail: userProfilesTable.email,
+  };
+
   if (role === "super_admin") {
     // All jobs
     const rows = await db
-      .select()
+      .select(selectWithOwner)
       .from(jobsTable)
+      .leftJoin(userProfilesTable, ownerJoinCond)
       .orderBy(desc(jobsTable.createdAt));
-    res.json(rows.map(rowToJob));
+    res.json(rows.map((r) => rowToJob(r.job, r.ownerName, r.ownerEmail)));
     return;
   }
 
@@ -72,12 +94,16 @@ router.get("/", async (req: AuthedRequest, res) => {
 
     let rows;
     if (excludeIds.length === 0) {
-      rows = await db.select().from(jobsTable).orderBy(desc(jobsTable.createdAt));
-    } else {
-      // Include own jobs + jobs not belonging to excluded users
       rows = await db
-        .select()
+        .select(selectWithOwner)
         .from(jobsTable)
+        .leftJoin(userProfilesTable, ownerJoinCond)
+        .orderBy(desc(jobsTable.createdAt));
+    } else {
+      rows = await db
+        .select(selectWithOwner)
+        .from(jobsTable)
+        .leftJoin(userProfilesTable, ownerJoinCond)
         .where(
           and(
             not(inArray(jobsTable.userId, excludeIds.filter((id) => id !== req.userId!)))
@@ -85,17 +111,18 @@ router.get("/", async (req: AuthedRequest, res) => {
         )
         .orderBy(desc(jobsTable.createdAt));
     }
-    res.json(rows.map(rowToJob));
+    res.json(rows.map((r) => rowToJob(r.job, r.ownerName, r.ownerEmail)));
     return;
   }
 
   // user / readonly — own only
   const rows = await db
-    .select()
+    .select(selectWithOwner)
     .from(jobsTable)
+    .leftJoin(userProfilesTable, ownerJoinCond)
     .where(eq(jobsTable.userId, req.userId!))
     .orderBy(desc(jobsTable.createdAt));
-  res.json(rows.map(rowToJob));
+  res.json(rows.map((r) => rowToJob(r.job, r.ownerName, r.ownerEmail)));
 });
 
 // ---------------------------------------------------------------------------
@@ -176,7 +203,7 @@ router.get("/:id", async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(parsed.data.id, req))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -206,7 +233,7 @@ router.patch("/:id", requireUser, async (req: AuthedRequest, res) => {
   const [updated] = await db
     .update(jobsTable)
     .set(updateFields as any)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(parsed.data.id, req))
     .returning();
 
   if (!updated) {
@@ -228,7 +255,7 @@ router.delete("/:id", requireUser, async (req: AuthedRequest, res) => {
   const [row] = await db
     .select({ webodmTaskId: jobsTable.webodmTaskId })
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(parsed.data.id, req))
     .limit(1);
 
   // Remove from NodeODM first (best-effort, don't block on failure)
@@ -238,7 +265,7 @@ router.delete("/:id", requireUser, async (req: AuthedRequest, res) => {
 
   await db
     .delete(jobsTable)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)));
+    .where(jobByIdCondition(parsed.data.id, req));
   res.status(204).end();
 });
 
@@ -255,7 +282,7 @@ router.post(
     const [row] = await db
       .select()
       .from(jobsTable)
-      .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+      .where(jobByIdCondition(id, req))
       .limit(1);
 
     if (!row) {
@@ -303,7 +330,7 @@ router.post("/:id/commit", requireUser, async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(id, req))
     .limit(1);
 
   if (!row) {
@@ -354,7 +381,7 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(parsed.data.id, req))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
@@ -508,7 +535,7 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(id, req))
     .limit(1);
 
   if (!row || !row.webodmTaskId || row.orthophotoUrl !== "tiles_ready") {
@@ -535,7 +562,7 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(id, req))
     .limit(1);
 
   if (!row) { res.status(404).end(); return; }
@@ -571,7 +598,7 @@ router.get("/:id/orthophoto", async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(id, req))
     .limit(1);
 
   if (!row) { res.status(404).end(); return; }
@@ -624,7 +651,7 @@ router.get("/:id/orthophoto-jpeg", async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(id, req))
     .limit(1);
 
   if (!row) { res.status(404).end(); return; }
@@ -686,7 +713,7 @@ router.patch("/:id/polygon", requireUser, async (req: AuthedRequest, res) => {
   const [row] = await db
     .select()
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, parsed.data.id), eq(jobsTable.userId, req.userId!)))
+    .where(jobByIdCondition(parsed.data.id, req))
     .limit(1);
   if (!row) {
     res.status(404).json({ error: "Not found" });
