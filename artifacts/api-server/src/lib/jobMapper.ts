@@ -4,6 +4,7 @@ export function rowToJob(row: JobRow, ownerName?: string | null, ownerEmail?: st
   return {
     ownerName: ownerName ?? null,
     ownerEmail: ownerEmail ?? null,
+    ownerId: row.userId,   // Clerk user ID of the job creator
     id: row.id,
     name: row.name,
     materialType: row.materialType as "sand" | "soil" | "coal",

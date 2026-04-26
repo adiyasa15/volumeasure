@@ -43,9 +43,23 @@ export default function Jobs() {
   const deleteJob = useDeleteJob();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { profile } = useUserProfile();
+  const { profile, isLocalAdmin } = useUserProfile();
   const isElevated = profile?.role === "super_admin" || profile?.role === "admin";
   const isReadOnly = profile?.role === "readonly";
+
+  // Returns true if the current user can edit/delete the given job:
+  //  - super_admin / admin  → any job
+  //  - local admin          → any job
+  //  - user                 → only their own jobs
+  //  - readonly             → never
+  const canMutateJob = (job: NonNullable<typeof jobs>[number]) => {
+    if (isReadOnly) return false;
+    if (isElevated || isLocalAdmin) return true;
+    return (job as any).ownerId === profile?.clerkUserId;
+  };
+
+  // All non-readonly users now see all jobs; show owner column for everyone
+  const showOwnerCol = true;
 
   const [search, setSearch] = useState("");
   const [materialFilter, setMaterialFilter] = useState<string>("all");
@@ -191,7 +205,7 @@ export default function Jobs() {
                   <TableHead className="font-mono uppercase text-xs">Material</TableHead>
                   <TableHead className="font-mono uppercase text-xs">Status</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
-                  {(isElevated || isReadOnly) && (
+                  {showOwnerCol && (
                     <TableHead className="font-mono uppercase text-xs">Owner</TableHead>
                   )}
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
@@ -231,7 +245,7 @@ export default function Jobs() {
                     <TableCell className="text-right font-mono font-medium">
                       {job.volumeM3 ? job.volumeM3.toLocaleString() : '-'}
                     </TableCell>
-                    {(isElevated || isReadOnly) && (
+                    {showOwnerCol && (
                       <TableCell className="text-sm text-muted-foreground font-mono">
                         <span className="flex items-center gap-1.5">
                           <User className="h-3 w-3 shrink-0" />
@@ -271,9 +285,9 @@ export default function Jobs() {
                       )}
                     </TableCell>
 
-                    {/* ── Actions menu (hidden for readonly) ── */}
+                    {/* ── Actions menu: only for jobs the current user can mutate ── */}
                     <TableCell className="text-right p-2">
-                      {!isReadOnly && (
+                      {canMutateJob(job) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button

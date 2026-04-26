@@ -116,12 +116,11 @@ router.get("/", async (req: AuthedRequest, res) => {
     return;
   }
 
-  // user / readonly — own only
+  // user — see all jobs (can only mutate their own, enforced per-route)
   const rows = await db
     .select(selectWithOwner)
     .from(jobsTable)
     .leftJoin(userProfilesTable, ownerJoinCond)
-    .where(eq(jobsTable.userId, req.userId!))
     .orderBy(desc(jobsTable.createdAt));
   res.json(rows.map((r) => rowToJob(r.job, r.ownerName, r.ownerEmail)));
 });
