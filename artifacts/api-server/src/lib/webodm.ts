@@ -483,7 +483,7 @@ export async function fetchOrthophotoJpeg(uuid: string): Promise<FetchOrthophoto
 }
 
 // ---------------------------------------------------------------------------
-// DSM-based cut / fill volume calculation
+// DSM + DTM triangulated base surface volume calculation
 // ---------------------------------------------------------------------------
 
 export type VolumeResult = {
@@ -493,6 +493,8 @@ export type VolumeResult = {
   areaSqm: number;
   baseline: number;
   pixelCount: number;
+  /** true when DTM was used as the per-pixel triangulated base surface */
+  triangulated?: boolean;
 };
 
 /** Ray-casting point-in-polygon (2-D coordinates). */
@@ -510,10 +512,62 @@ function pointInPoly(px: number, py: number, poly: [number, number][]): boolean 
 }
 
 /**
- * Download the NodeODM DSM GeoTIFF for `uuid`, then compute cut/fill volumes
- * inside `polygonLatLng` (each element is [lat, lng] in WGS-84 degrees).
+ * Download a single GeoTIFF from NodeODM and parse it.
+ * Returns null when the asset is unavailable.
+ */
+async function fetchGeoTiff(url: string, label: string) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      logger.warn({ url, status: res.status }, `${label} download failed`);
+      return null;
+    }
+    const { fromArrayBuffer } = await import("geotiff");
+    const buf = await res.arrayBuffer();
+    const tiff = await fromArrayBuffer(buf);
+    const image = await tiff.getImage();
+    const rasters = await image.readRasters({ interleave: false });
+    return {
+      image,
+      data: rasters[0] as Float32Array | Int16Array | Uint16Array | Float64Array,
+      width: image.getWidth(),
+      height: image.getHeight(),
+      bbox: image.getBoundingBox() as [number, number, number, number],
+      noData: image.getGDALNoData(),
+      geoKeys: image.getGeoKeys(),
+    };
+  } catch (err) {
+    logger.error({ err, url }, `${label} fetch/parse error`);
+    return null;
+  }
+}
+
+/** Nearest-neighbour lookup of elevation at a native-CRS coordinate in a raster. */
+function sampleRaster(
+  x: number,
+  y: number,
+  raster: { data: Float32Array | Int16Array | Uint16Array | Float64Array; width: number; height: number; bbox: [number, number, number, number]; noData: number | null },
+): number | null {
+  const { data, width, height, bbox, noData } = raster;
+  const pixelW = (bbox[2] - bbox[0]) / width;
+  const pixelH = (bbox[3] - bbox[1]) / height;
+  const col = Math.round((x - bbox[0]) / pixelW);
+  const row = Math.round((bbox[3] - y) / pixelH);
+  if (col < 0 || col >= width || row < 0 || row >= height) return null;
+  const elev = Number(data[row * width + col]);
+  if (noData != null && Math.abs(elev - noData) <= 1e-3) return null;
+  if (isNaN(elev) || !isFinite(elev)) return null;
+  return elev;
+}
+
+/**
+ * Download the NodeODM DSM (and DTM when available) for `uuid`, then compute
+ * cut/fill volumes inside `polygonLatLng` (each element is [lat, lng] WGS-84).
  *
- * Baseline = minimum elevation sampled at the polygon perimeter vertices.
+ * Base surface strategy (most-accurate-first):
+ *   1. Triangulated — DTM elevation per pixel (follows ground contours)
+ *   2. Flat-plane fallback — minimum elevation at polygon perimeter vertices
+ *
  * Returns null when the DSM is unavailable or cannot be parsed.
  */
 export async function calculateVolumeFromDSM(
@@ -522,70 +576,49 @@ export async function calculateVolumeFromDSM(
 ): Promise<VolumeResult | null> {
   if (!token()) return null;
 
-  // ── 1. Download DSM ──────────────────────────────────────────────────────
-  const dsmUrl = qs(`/task/${uuid}/assets/odm_dem/dsm.tif`);
-  let arrayBuffer: ArrayBuffer;
-  try {
-    const res = await fetch(dsmUrl);
-    if (!res.ok) {
-      logger.warn({ uuid, status: res.status }, "DSM download failed");
-      return null;
-    }
-    arrayBuffer = await res.arrayBuffer();
-  } catch (err) {
-    logger.error({ err, uuid }, "DSM fetch error");
+  // ── 1. Download DSM (required) ───────────────────────────────────────────
+  const dsm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
+  if (!dsm) return null;
+
+  const MAX_PIXELS = 25_000_000;
+  if (dsm.width * dsm.height > MAX_PIXELS) {
+    logger.warn({ uuid, width: dsm.width, height: dsm.height }, "DSM too large for server-side volume calc");
     return null;
   }
 
-  // ── 2. Parse GeoTIFF ─────────────────────────────────────────────────────
-  const { fromArrayBuffer } = await import("geotiff");
+  // ── 2. Try to download DTM for triangulated base surface ─────────────────
+  const dtm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
+  const triangulated = dtm !== null;
+  if (triangulated) {
+    logger.info({ uuid }, "DTM available — using triangulated base surface for volume calc");
+  } else {
+    logger.info({ uuid }, "DTM unavailable — falling back to flat-plane (min perimeter) baseline");
+  }
+
+  const { width, height, bbox, noData } = dsm;
+  const pixelW = (bbox[2] - bbox[0]) / width;
+  const pixelH = (bbox[3] - bbox[1]) / height;
+
+  // ── 3. Detect CRS & project polygon ─────────────────────────────────────
   const proj4Module = await import("proj4");
   const proj4: (srcProj: string, dstProj: string, coord: [number, number]) => [number, number] =
     (proj4Module.default as any).bind(proj4Module.default) ?? proj4Module.default;
 
-  const tiff = await fromArrayBuffer(arrayBuffer);
-  const image = await tiff.getImage();
-
-  const width = image.getWidth();
-  const height = image.getHeight();
-  const MAX_PIXELS = 25_000_000; // ~5 000 × 5 000 guard
-  if (width * height > MAX_PIXELS) {
-    logger.warn({ uuid, width, height }, "DSM too large for server-side volume calc");
-    return null;
-  }
-
-  // Bounding box in native CRS [west, south, east, north]
-  const bbox = image.getBoundingBox() as [number, number, number, number];
-  const pixelW = (bbox[2] - bbox[0]) / width;
-  const pixelH = (bbox[3] - bbox[1]) / height;
-
-  // No-data value (null when absent)
-  const noDataValue = image.getGDALNoData();
-
-  // Read first band (elevation)
-  const rasters = await image.readRasters({ interleave: false });
-  const data = rasters[0] as Float32Array | Int16Array | Uint16Array | Float64Array;
-
-  // ── 3. Detect CRS & project polygon ─────────────────────────────────────
-  const geoKeys = image.getGeoKeys();
+  const geoKeys = dsm.geoKeys;
   const epsg: number =
     (geoKeys as any).ProjectedCSTypeGeoKey ||
     (geoKeys as any).GeographicTypeGeoKey ||
     4326;
 
-  // Convert polygon [lat, lng] → native CRS [x, y]
   let polyNative: [number, number][];
   if (epsg === 4326 || epsg === 4269) {
-    // Geographic — just swap to [lng, lat]
     polyNative = polygonLatLng.map(([lat, lng]) => [lng, lat] as [number, number]);
   } else {
-    // Projected — use proj4; fall back gracefully if EPSG is unknown
     try {
       polyNative = polygonLatLng.map(([lat, lng]) =>
         proj4(`EPSG:4326`, `EPSG:${epsg}`, [lng, lat]),
       );
     } catch {
-      // proj4 doesn't know this EPSG: use plain bbox ratio to estimate
       polyNative = polygonLatLng.map(([lat, lng]) => [lng, lat] as [number, number]);
     }
   }
@@ -598,34 +631,30 @@ export async function calculateVolumeFromDSM(
     const mPerDegLat = 111_319.9;
     pixelAreaM2 = Math.abs(pixelW * mPerDegLng) * Math.abs(pixelH * mPerDegLat);
   } else {
-    // Projected CRS: units are metres
     pixelAreaM2 = Math.abs(pixelW * pixelH);
   }
 
-  // ── 5. Baseline = min elevation at polygon perimeter ────────────────────
-  const perimeterElevations: number[] = [];
-  for (const [px, py] of polyNative) {
-    const col = Math.round((px - bbox[0]) / pixelW);
-    const row = Math.round((bbox[3] - py) / pixelH);
-    if (col >= 0 && col < width && row >= 0 && row < height) {
-      const elev = Number(data[row * width + col]);
-      if (noDataValue == null || Math.abs(elev - noDataValue) > 1e-3) {
-        if (!isNaN(elev) && isFinite(elev)) perimeterElevations.push(elev);
-      }
+  // ── 5. Flat-plane fallback baseline (used only when DTM is missing) ──────
+  let flatBaseline = 0;
+  if (!triangulated) {
+    const perimeterElevations: number[] = [];
+    for (const [px, py] of polyNative) {
+      const elev = sampleRaster(px, py, dsm);
+      if (elev !== null) perimeterElevations.push(elev);
     }
+    if (perimeterElevations.length === 0) {
+      logger.warn({ uuid }, "No valid perimeter elevations found in DSM");
+      return null;
+    }
+    flatBaseline = Math.min(...perimeterElevations);
   }
-  if (perimeterElevations.length === 0) {
-    logger.warn({ uuid }, "No valid perimeter elevations found in DSM");
-    return null;
-  }
-  const baseline = Math.min(...perimeterElevations);
 
-  // ── 6. Integrate cut / fill over interior pixels ─────────────────────────
+  // ── 6. Integrate cut / fill over interior DSM pixels ─────────────────────
   let cutM3 = 0;
   let fillM3 = 0;
   let pixelCount = 0;
+  let baselineSum = 0;
 
-  // Clamp iteration to polygon bounding box for performance
   const polyXs = polyNative.map((p) => p[0]);
   const polyYs = polyNative.map((p) => p[1]);
   const bboxMinX = Math.max(bbox[0], Math.min(...polyXs));
@@ -646,23 +675,37 @@ export async function calculateVolumeFromDSM(
 
       if (!pointInPoly(px, py, polyNative)) continue;
 
-      const elev = Number(data[row * width + col]);
-      if (noDataValue != null && Math.abs(elev - noDataValue) <= 1e-3) continue;
-      if (isNaN(elev) || !isFinite(elev)) continue;
+      const surfaceElev = sampleRaster(px, py, dsm);
+      if (surfaceElev === null) continue;
 
-      const diff = elev - baseline;
+      // Triangulated base: DTM elevation at this exact pixel location
+      // Flat-plane base:   minimum perimeter elevation (fallback)
+      let baseElev: number;
+      if (triangulated) {
+        const dtmElev = sampleRaster(px, py, dtm!);
+        // If DTM has a gap here, fall back to the DSM value (zero height)
+        baseElev = dtmElev ?? surfaceElev;
+      } else {
+        baseElev = flatBaseline;
+      }
+
+      const diff = surfaceElev - baseElev;
       if (diff > 0) cutM3  += diff * pixelAreaM2;
       else          fillM3 += Math.abs(diff) * pixelAreaM2;
+      baselineSum += baseElev;
       pixelCount++;
     }
   }
 
+  const avgBaseline = pixelCount > 0 ? baselineSum / pixelCount : flatBaseline;
+
   return {
-    cutM3:      Math.round(cutM3 * 100) / 100,
-    fillM3:     Math.round(fillM3 * 100) / 100,
-    netM3:      Math.round((cutM3 - fillM3) * 100) / 100,
-    areaSqm:    Math.round(pixelCount * pixelAreaM2 * 100) / 100,
-    baseline:   Math.round(baseline * 1000) / 1000,
+    cutM3:        Math.round(cutM3 * 100) / 100,
+    fillM3:       Math.round(fillM3 * 100) / 100,
+    netM3:        Math.round((cutM3 - fillM3) * 100) / 100,
+    areaSqm:      Math.round(pixelCount * pixelAreaM2 * 100) / 100,
+    baseline:     Math.round(avgBaseline * 1000) / 1000,
     pixelCount,
+    triangulated,
   };
 }
