@@ -188,7 +188,8 @@ router.post("/", requireUser, async (req: AuthedRequest, res) => {
     })
     .returning();
 
-  void log({ event: "job_created", userId: req.userId, jobId: row.id, message: `Job "${body.name}" created (${body.images.length} images, ${body.materialType})`, meta: { materialType: body.materialType, sourceType: body.sourceType, imageCount: body.images.length } });
+  const creator = req.userDisplayName ?? req.userEmail ?? req.userId ?? "unknown";
+  void log({ event: "job_created", userId: req.userId, userEmail: req.userEmail, jobId: row.id, message: `Job "${body.name}" created by ${creator} (${body.images.length} images, ${body.materialType})`, meta: { materialType: body.materialType, sourceType: body.sourceType, imageCount: body.images.length } });
   res.status(201).json(rowToJob(row));
 });
 
@@ -267,7 +268,8 @@ router.delete("/:id", requireUser, async (req: AuthedRequest, res) => {
   await db
     .delete(jobsTable)
     .where(jobByIdCondition(parsed.data.id, req));
-  void log({ event: "job_deleted", userId: req.userId, jobId: parsed.data.id, message: `Job ${parsed.data.id} deleted by ${req.userId}` });
+  const deleter = req.userDisplayName ?? req.userEmail ?? req.userId ?? "unknown";
+  void log({ event: "job_deleted", userId: req.userId, userEmail: req.userEmail, jobId: parsed.data.id, message: `Job ${parsed.data.id} deleted by ${deleter}` });
   res.status(204).end();
 });
 

@@ -181,11 +181,12 @@ router.patch("/users/:id", requireAdmin, async (req: AuthedRequest, res: Respons
     .where(eq(userProfilesTable.id, id))
     .returning();
 
+  const actor = req.userDisplayName ?? req.userEmail ?? req.userId ?? "unknown";
   if (status && status !== target.status) {
-    void log({ event: status === "approved" ? "user_approved" : "user_suspended", userId: req.userId, userEmail: updated.email ?? undefined, message: `User ${updated.email ?? id} status changed to ${status} by ${req.userId}` });
+    void log({ event: status === "approved" ? "user_approved" : "user_suspended", userId: req.userId, userEmail: req.userEmail, message: `User ${updated.email ?? id} status changed to ${status} by ${actor}` });
   }
   if (role && role !== target.role) {
-    void log({ event: "user_role_changed", userId: req.userId, userEmail: updated.email ?? undefined, message: `User ${updated.email ?? id} role changed to ${role} by ${req.userId}` });
+    void log({ event: "user_role_changed", userId: req.userId, userEmail: req.userEmail, message: `User ${updated.email ?? id} role changed to ${role} by ${actor}` });
   }
 
   res.json(rowToProfile(updated));
@@ -241,7 +242,8 @@ router.put("/settings/webodm-token", requireSuperAdmin, async (req: AuthedReques
     .values({ key: "webodm_token", value: trimmed, updatedBy: req.userProfileId ? req.userProfileId as any : undefined })
     .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date(), updatedBy: req.userProfileId ? req.userProfileId as any : undefined } });
   setTokenOverride(trimmed);
-  void log({ event: "token_updated", userId: req.userId, message: "WebODM API token updated" });
+  const tokenActor = req.userDisplayName ?? req.userEmail ?? req.userId ?? "unknown";
+  void log({ event: "token_updated", userId: req.userId, userEmail: req.userEmail, message: `WebODM API token updated by ${tokenActor}` });
   res.json({ ok: true });
 });
 
@@ -331,7 +333,8 @@ router.put("/env-vars/:key", requireSuperAdmin, async (req: AuthedRequest, res: 
     if (key === "LOG_LEVEL") process.env.LOG_LEVEL = trimmed;
   }
 
-  void log({ event: "env_var_updated", userId: req.userId, message: `Env var ${key} updated via settings UI`, meta: { key } });
+  const envActor = req.userDisplayName ?? req.userEmail ?? req.userId ?? "unknown";
+  void log({ event: "env_var_updated", userId: req.userId, userEmail: req.userEmail, message: `Env var ${key} updated by ${envActor}`, meta: { key } });
   res.json({ ok: true });
 });
 

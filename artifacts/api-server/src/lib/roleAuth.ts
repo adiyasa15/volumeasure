@@ -26,6 +26,8 @@ function nameFromEmail(email: string): string {
 export interface AuthedRequest extends Request {
   userId?: string;           // Clerk user ID or local username
   userProfileId?: string;    // user_profiles.id (uuid)
+  userEmail?: string;        // Email address of the acting user
+  userDisplayName?: string;  // Human-readable name for log messages
   userRole?: UserRole;
   userStatus?: UserStatus;
   isLocalAdmin?: boolean;
@@ -75,6 +77,8 @@ export async function requireAuth(
       if (profile && profile.status === "approved") {
         req.userProfileId = profile.id;
         req.userId = profile.username ?? profile.clerkUserId ?? profile.id;
+        req.userEmail = profile.email ?? undefined;
+        req.userDisplayName = profile.displayName ?? profile.username ?? profile.email ?? undefined;
         req.userRole = profile.role as UserRole;
         req.userStatus = profile.status as UserStatus;
         req.isLocalAdmin = true;
@@ -160,6 +164,8 @@ export async function requireAuth(
 
   req.userId = clerkId;
   req.userProfileId = profile.id;
+  req.userEmail = profile.email ?? undefined;
+  req.userDisplayName = profile.displayName ?? profile.email ?? undefined;
   req.userRole = profile.role as UserRole;
   req.userStatus = profile.status as UserStatus;
   req.isLocalAdmin = false;
