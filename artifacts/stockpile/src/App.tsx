@@ -221,6 +221,10 @@ function ClerkProviderWithRoutes() {
             subtitle: "Join PileMetric",
           },
         },
+        formFieldLabel__emailAddress: "Username / Email Address",
+        formFieldInputPlaceholder__emailAddress: "Enter username or email address",
+        formFieldLabel__emailAddress_username: "Username / Email Address",
+        formFieldInputPlaceholder__emailAddress_username: "Enter username or email address",
       }}
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
