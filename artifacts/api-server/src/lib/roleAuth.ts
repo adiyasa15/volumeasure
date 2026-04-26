@@ -7,6 +7,22 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.SESSION_SECRET ?? "pilemetric-local-secret";
 
+/**
+ * Derive a human-readable display name from an email address when no Clerk
+ * firstName/lastName is available.
+ * e.g.  john.doe@company.com  →  "John Doe"
+ *       sarah_smith@org.net   →  "Sarah Smith"
+ *       mike123@mail.com      →  "Mike123"
+ */
+function nameFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  return local
+    .split(/[.\-_+]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export interface AuthedRequest extends Request {
   userId?: string;           // Clerk user ID or local username
   userProfileId?: string;    // user_profiles.id (uuid)
@@ -90,9 +106,11 @@ export async function requireAuth(
     try {
       const clerkUser = await clerkClient().users.getUser(clerkId);
       email = clerkUser.emailAddresses?.[0]?.emailAddress ?? email;
-      name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || email;
+      const fullName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim();
+      name = fullName || nameFromEmail(email) || email;
     } catch {
       // silently fall back to session claims
+      if (!name && email) name = nameFromEmail(email) || email;
     }
 
     // Check if a pre-created profile exists for this email (no clerkUserId yet)
@@ -109,10 +127,15 @@ export async function requireAuth(
         .limit(1);
 
       if (existing) {
-        // Link the Clerk ID to the pre-created profile
+        // Link the Clerk ID to the pre-created profile.
+        // If the existing displayName is blank or was set to the raw email
+        // (old behaviour), replace it with the better derived name.
+        const betterName = (!existing.displayName || existing.displayName === email)
+          ? (name || existing.displayName)
+          : existing.displayName;
         const [linked] = await db
           .update(userProfilesTable)
-          .set({ clerkUserId: clerkId, displayName: existing.displayName || name, updatedAt: new Date() })
+          .set({ clerkUserId: clerkId, displayName: betterName, updatedAt: new Date() })
           .where(eq(userProfilesTable.id, existing.id))
           .returning();
         profile = linked;
