@@ -23,10 +23,16 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     res.status(400).json({ error: "username and password required" });
     return;
   }
+  // Accept login by username OR email address
   const [profile] = await db
     .select()
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.username, username))
+    .where(
+      or(
+        eq(userProfilesTable.username, username),
+        eq(userProfilesTable.email, username),
+      ),
+    )
     .limit(1);
 
   if (!profile || !profile.passwordHash) {

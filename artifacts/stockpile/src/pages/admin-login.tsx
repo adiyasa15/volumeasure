@@ -60,14 +60,14 @@ export default function AdminLogin() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
               <Label htmlFor="username" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Username
+                Username or Email
               </Label>
               <Input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
+                autoComplete="username email"
                 className="font-mono bg-input border-border"
                 disabled={loading}
                 required
