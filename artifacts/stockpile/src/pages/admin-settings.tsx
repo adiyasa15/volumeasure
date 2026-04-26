@@ -460,11 +460,110 @@ const EVENT_OPTIONS = [
   "user_suspended", "user_role_changed", "token_updated", "error",
 ];
 
+function LogDetailModal({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      {/* Panel */}
+      <div
+        className="relative z-10 w-full max-w-xl bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/40">
+          <div className="flex items-center gap-3">
+            <LevelBadge level={log.level} />
+            <span className="font-mono text-xs flex items-center gap-1.5">
+              <EventIcon event={log.event} />
+              {log.event.replace(/_/g, " ")}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+            aria-label="Close"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Timestamp */}
+          <div>
+            <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Timestamp</p>
+            <p className="font-mono text-sm">{format(new Date(log.createdAt), "MMM d, yyyy HH:mm:ss")}</p>
+          </div>
+
+          {/* Message */}
+          <div>
+            <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Message</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{log.message}</p>
+          </div>
+
+          {/* User / Job */}
+          {(log.userEmail || log.userId || log.jobId) && (
+            <div className="grid grid-cols-2 gap-3">
+              {(log.userEmail || log.userId) && (
+                <div>
+                  <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">User</p>
+                  <p className="font-mono text-xs break-all">{log.userEmail ?? log.userId}</p>
+                </div>
+              )}
+              {log.jobId && (
+                <div>
+                  <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Job ID</p>
+                  <p className="font-mono text-xs break-all">{log.jobId}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Meta */}
+          {log.meta && Object.keys(log.meta).length > 0 && (
+            <div>
+              <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Metadata</p>
+              <pre className="text-xs bg-background/60 border border-border/50 rounded p-3 overflow-x-auto font-mono whitespace-pre-wrap break-words">
+                {JSON.stringify(log.meta, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {/* Log ID */}
+          <div>
+            <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">Log ID</p>
+            <p className="font-mono text-xs text-muted-foreground">{log.id}</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-border bg-muted/20 flex justify-end">
+          <Button size="sm" variant="outline" onClick={onClose} className="font-mono uppercase text-xs">
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LogsTab() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [eventFilter, setEventFilter] = useState("all");
   const [error, setError] = useState("");
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true); setError("");
@@ -484,6 +583,10 @@ function LogsTab() {
 
   return (
     <div className="space-y-4">
+      {selectedLog && (
+        <LogDetailModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+      )}
+
       <div className="flex items-center gap-3">
         <Select value={eventFilter} onValueChange={setEventFilter}>
           <SelectTrigger className="w-[200px] font-mono text-xs uppercase bg-background/50">
@@ -532,7 +635,12 @@ function LogsTab() {
               </TableHeader>
               <TableBody>
                 {logs.map((log) => (
-                  <TableRow key={log.id} className="hover:bg-secondary/20 text-sm">
+                  <TableRow
+                    key={log.id}
+                    className="hover:bg-secondary/20 text-sm cursor-pointer transition-colors"
+                    onClick={() => setSelectedLog(log)}
+                    title="Click to view full details"
+                  >
                     <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {format(new Date(log.createdAt), "MMM d HH:mm:ss")}
                     </TableCell>
