@@ -8,6 +8,29 @@ import { randomUUID } from "crypto";
 
 const NODE_BASE = "https://spark1.webodm.net";
 
+/** In-memory token override — set by admin settings API (persisted in DB). */
+let _tokenOverride: string | null = null;
+
+/** Called on startup (from app.ts) and after DB token save. */
+export function setTokenOverride(t: string | null) {
+  _tokenOverride = t;
+}
+
+/** Load token override from DB on startup so restarts don't lose it. */
+export async function initTokenFromDb() {
+  try {
+    const { db, appSettingsTable } = await import("@workspace/db");
+    const { eq } = await import("drizzle-orm");
+    const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "webodm_token"));
+    if (rows[0]?.value) {
+      _tokenOverride = rows[0].value;
+      logger.info("WebODM token loaded from database");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not load WebODM token from database — using env var");
+  }
+}
+
 export type NodeOdmTask = {
   uuid: string;
   name?: string;
@@ -34,7 +57,7 @@ export function statusFromCode(code: number | null | undefined) {
 }
 
 function token(): string | null {
-  return process.env.WEBODM_LIGHTNING_TOKEN || null;
+  return _tokenOverride ?? process.env.WEBODM_LIGHTNING_TOKEN ?? null;
 }
 
 /** Append `?token=<t>` (or `&token=<t>`) to a path. */

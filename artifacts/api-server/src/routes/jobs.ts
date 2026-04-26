@@ -31,6 +31,7 @@ import {
   requireUser,
   type AuthedRequest,
 } from "../lib/roleAuth";
+import { log } from "../lib/activityLog";
 
 const router: IRouter = Router();
 router.use(requireAuth, requireApproved);
@@ -188,6 +189,7 @@ router.post("/", requireUser, async (req: AuthedRequest, res) => {
     })
     .returning();
 
+  void log({ event: "job_created", userId: req.userId, jobId: row.id, message: `Job "${body.name}" created (${body.images.length} images, ${body.materialType})`, meta: { materialType: body.materialType, sourceType: body.sourceType, imageCount: body.images.length } });
   res.status(201).json(rowToJob(row));
 });
 
@@ -266,6 +268,7 @@ router.delete("/:id", requireUser, async (req: AuthedRequest, res) => {
   await db
     .delete(jobsTable)
     .where(jobByIdCondition(parsed.data.id, req));
+  void log({ event: "job_deleted", userId: req.userId, jobId: parsed.data.id, message: `Job ${parsed.data.id} deleted by ${req.userId}` });
   res.status(204).end();
 });
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq, ne, or, inArray, not } from "drizzle-orm";
-import { db, userProfilesTable } from "@workspace/db";
+import { and, eq, ne, or, inArray, not, desc } from "drizzle-orm";
+import { db, userProfilesTable, appSettingsTable, activityLogsTable } from "@workspace/db";
 import type { UserRole, UserStatus } from "@workspace/db";
 import bcrypt from "bcryptjs";
 import {
@@ -13,6 +13,8 @@ import {
   canSetRole,
   type AuthedRequest,
 } from "../lib/roleAuth";
+import { log } from "../lib/activityLog";
+import { setTokenOverride } from "../lib/webodm";
 
 const router: IRouter = Router();
 
@@ -49,6 +51,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return;
   }
   const token = signLocalJwt(profile.id);
+  void log({ event: "login", userId: profile.username ?? profile.id, userEmail: profile.email ?? undefined, message: `Local admin login: ${profile.username ?? profile.email}` });
   res.json({
     token,
     profile: {
@@ -178,6 +181,13 @@ router.patch("/users/:id", requireAdmin, async (req: AuthedRequest, res: Respons
     .where(eq(userProfilesTable.id, id))
     .returning();
 
+  if (status && status !== target.status) {
+    void log({ event: status === "approved" ? "user_approved" : "user_suspended", userId: req.userId, userEmail: updated.email ?? undefined, message: `User ${updated.email ?? id} status changed to ${status} by ${req.userId}` });
+  }
+  if (role && role !== target.role) {
+    void log({ event: "user_role_changed", userId: req.userId, userEmail: updated.email ?? undefined, message: `User ${updated.email ?? id} role changed to ${role} by ${req.userId}` });
+  }
+
   res.json(rowToProfile(updated));
 });
 
@@ -202,6 +212,85 @@ router.delete("/users/:id", requireAdmin, async (req: AuthedRequest, res: Respon
 
   await db.delete(userProfilesTable).where(eq(userProfilesTable.id, id));
   res.status(204).end();
+});
+
+// ── GET /api/admin/settings — get current settings [super_admin] ─────────────
+router.get("/settings", requireSuperAdmin, async (_req: AuthedRequest, res: Response) => {
+  const rows = await db.select().from(appSettingsTable);
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const rawToken = map["webodm_token"] ?? process.env.WEBODM_LIGHTNING_TOKEN ?? "";
+  const masked = rawToken.length > 8
+    ? rawToken.slice(0, 4) + "•".repeat(Math.min(rawToken.length - 8, 24)) + rawToken.slice(-4)
+    : rawToken ? "••••••••" : "";
+  res.json({
+    webodmToken: { masked, source: map["webodm_token"] ? "database" : "environment" },
+    webodmUrl: "https://spark1.webodm.net",
+  });
+});
+
+// ── PUT /api/admin/settings/webodm-token — update WebODM token ───────────────
+router.put("/settings/webodm-token", requireSuperAdmin, async (req: AuthedRequest, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token || token.trim().length < 8) {
+    res.status(400).json({ error: "Token must be at least 8 characters" });
+    return;
+  }
+  const trimmed = token.trim();
+  await db
+    .insert(appSettingsTable)
+    .values({ key: "webodm_token", value: trimmed, updatedBy: req.userProfileId ? req.userProfileId as any : undefined })
+    .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date(), updatedBy: req.userProfileId ? req.userProfileId as any : undefined } });
+  setTokenOverride(trimmed);
+  void log({ event: "token_updated", userId: req.userId, message: "WebODM API token updated" });
+  res.json({ ok: true });
+});
+
+// ── GET /api/admin/logs — activity logs [super_admin] ────────────────────────
+router.get("/logs", requireSuperAdmin, async (req: AuthedRequest, res: Response) => {
+  const limit = Math.min(parseInt((req.query.limit as string) ?? "200", 10), 500);
+  const offset = parseInt((req.query.offset as string) ?? "0", 10);
+  const event = req.query.event as string | undefined;
+
+  const query = db.select().from(activityLogsTable);
+  const rows = await (event
+    ? query.where(eq(activityLogsTable.event, event))
+    : query
+  )
+    .orderBy(desc(activityLogsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  res.json(rows);
+});
+
+// ── GET /api/admin/webodm-balance — NodeODM server info + balance ─────────────
+router.get("/webodm-balance", requireSuperAdmin, async (_req: AuthedRequest, res: Response) => {
+  const rows = await db.select().from(appSettingsTable).where(eq(appSettingsTable.key, "webodm_token"));
+  const tokenVal = rows[0]?.value ?? process.env.WEBODM_LIGHTNING_TOKEN ?? "";
+  if (!tokenVal) {
+    res.status(400).json({ error: "No WebODM token configured" });
+    return;
+  }
+  try {
+    // NodeODM info endpoint
+    const infoRes = await fetch(`https://spark1.webodm.net/info?token=${encodeURIComponent(tokenVal)}`, { signal: AbortSignal.timeout(8000) });
+    if (!infoRes.ok) {
+      res.status(502).json({ error: `NodeODM returned ${infoRes.status}` });
+      return;
+    }
+    const info = await infoRes.json();
+
+    // Also try to get task queue stats
+    let queueStats = null;
+    try {
+      const queueRes = await fetch(`https://spark1.webodm.net/task/list?token=${encodeURIComponent(tokenVal)}`, { signal: AbortSignal.timeout(5000) });
+      if (queueRes.ok) queueStats = await queueRes.json();
+    } catch { /* best-effort */ }
+
+    res.json({ info, queueStats, dashboardUrl: "https://webodm.net/dashboard" });
+  } catch (err: any) {
+    res.status(502).json({ error: "Failed to reach NodeODM server", details: String(err?.message ?? err) });
+  }
 });
 
 // ── Helper ───────────────────────────────────────────────────────────────────

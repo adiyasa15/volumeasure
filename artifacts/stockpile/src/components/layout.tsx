@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
-import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck } from "lucide-react";
+import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useUserProfile } from "@/context/UserProfileContext";
@@ -14,6 +14,7 @@ const baseNavItems = [
 ];
 
 const adminNavItem = { href: "/admin/users", label: "User Management", icon: Users };
+const settingsNavItem = { href: "/admin/settings", label: "Settings", icon: Settings };
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -33,6 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       return true;
     }),
     ...(isAdmin ? [adminNavItem] : []),
+    ...(profile?.role === "super_admin" ? [settingsNavItem] : []),
   ];
 
   const displayName = isLocalAdmin
