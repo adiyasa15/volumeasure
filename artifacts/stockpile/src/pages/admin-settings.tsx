@@ -17,6 +17,13 @@ import {
   Plus,
   BarChart2,
   ShieldAlert,
+  Terminal,
+  Lock,
+  Unlock,
+  RotateCcw,
+  Database,
+  Server,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +66,19 @@ interface Settings {
   webodmUrl: string;
 }
 
+interface EnvVar {
+  key: string;
+  category: string;
+  label: string;
+  description: string;
+  sensitive: boolean;
+  editable: boolean;
+  requiresRestart: boolean;
+  source: "database" | "environment" | "unset";
+  masked: string;
+  isSet: boolean;
+}
+
 interface ActivityLog {
   id: string;
   level: string;
@@ -82,6 +102,214 @@ interface NodeOdmInfo {
   engineVersion?: string;
   engine?: string;
   [key: string]: unknown;
+}
+
+// ── Category icon ────────────────────────────────────────────────────────────
+function CategoryIcon({ category }: { category: string }) {
+  if (category === "Database") return <Database className="h-3.5 w-3.5 text-blue-400" />;
+  if (category === "Clerk Auth") return <Globe className="h-3.5 w-3.5 text-purple-400" />;
+  if (category === "WebODM") return <Server className="h-3.5 w-3.5 text-orange-400" />;
+  return <Terminal className="h-3.5 w-3.5 text-muted-foreground" />;
+}
+
+// ── Env Vars Section ──────────────────────────────────────────────────────────
+function EnvVarsSection() {
+  const [vars, setVars] = useState<EnvVar[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Record<string, string>>({});
+  const [showVal, setShowVal] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const fetchVars = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiCall<EnvVar[]>("/admin/env-vars");
+      setVars(data);
+    } catch { /* silent */ } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchVars(); }, [fetchVars]);
+
+  const handleSave = async (key: string) => {
+    const val = editing[key] ?? "";
+    setSaving((s) => ({ ...s, [key]: true }));
+    setErrors((e) => ({ ...e, [key]: "" }));
+    try {
+      await apiCall(`/admin/env-vars/${key}`, { method: "PUT", body: JSON.stringify({ value: val }) });
+      setSaved((s) => ({ ...s, [key]: true }));
+      setEditing((e) => { const n = { ...e }; delete n[key]; return n; });
+      setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 2500);
+      void fetchVars();
+    } catch (err: any) {
+      setErrors((e) => ({ ...e, [key]: err.message }));
+    } finally {
+      setSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  const handleClear = async (key: string) => {
+    setSaving((s) => ({ ...s, [key]: true }));
+    try {
+      await apiCall(`/admin/env-vars/${key}`, { method: "PUT", body: JSON.stringify({ value: "" }) });
+      setSaved((s) => ({ ...s, [key]: true }));
+      setTimeout(() => setSaved((s) => ({ ...s, [key]: false })), 2500);
+      void fetchVars();
+    } catch (err: any) {
+      setErrors((e) => ({ ...e, [key]: err.message }));
+    } finally {
+      setSaving((s) => ({ ...s, [key]: false }));
+    }
+  };
+
+  // Group by category
+  const categories = [...new Set(vars.map((v) => v.category))];
+
+  if (loading) {
+    return (
+      <Card className="bg-card/50 border-border/50">
+        <CardContent className="py-8 flex items-center justify-center text-muted-foreground">
+          <RefreshCw className="h-5 w-5 animate-spin" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Terminal className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-mono uppercase font-bold text-muted-foreground">Environment Variables</h3>
+        <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={fetchVars} title="Refresh">
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Values stored here override the environment variable for subsequent server restarts. Sensitive values are masked. Variables marked <span className="font-mono text-yellow-400">restart required</span> take effect after the server is restarted.
+      </p>
+
+      {categories.map((cat) => (
+        <Card key={cat} className="bg-card/50 border-border/50 overflow-hidden">
+          <CardHeader className="py-3 px-4 bg-muted/30 border-b border-border/50">
+            <CardTitle className="text-xs font-mono uppercase flex items-center gap-2">
+              <CategoryIcon category={cat} />
+              {cat}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border/40">
+              {vars.filter((v) => v.category === cat).map((v) => {
+                const editingNow = v.key in editing;
+                const currentVal = editing[v.key] ?? "";
+
+                return (
+                  <div key={v.key} className="px-4 py-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold">{v.key}</span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${
+                            v.source === "database"    ? "bg-primary/20 text-primary border-primary/30" :
+                            v.source === "environment" ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                                                         "bg-destructive/20 text-destructive border-destructive/30"
+                          }`}>
+                            {v.source === "database" ? "DB override" : v.source === "environment" ? "Env" : "Unset"}
+                          </span>
+                          {v.requiresRestart && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border bg-yellow-500/10 text-yellow-400 border-yellow-500/30">
+                              Restart required
+                            </span>
+                          )}
+                          {!v.editable && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border bg-muted/40 text-muted-foreground border-border/40">
+                              <Lock className="h-2.5 w-2.5 mr-1" /> Read-only
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{v.description}</p>
+                      </div>
+
+                      {/* Current masked value */}
+                      {!editingNow && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-mono text-xs text-muted-foreground bg-background/60 border border-border/40 rounded px-2 py-1 max-w-[180px] truncate">
+                            {v.isSet
+                              ? v.masked
+                              : <span className="italic opacity-40">not set</span>}
+                          </span>
+                          {v.editable && v.isSet && (
+                            <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit" onClick={() => setEditing((e) => ({ ...e, [v.key]: "" }))}>
+                              <Unlock className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {v.editable && !v.isSet && (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" title="Set value" onClick={() => setEditing((e) => ({ ...e, [v.key]: "" }))}>
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Edit row */}
+                    {editingNow && (
+                      <div className="space-y-2 pl-0">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Input
+                              type={v.sensitive && !showVal[v.key] ? "password" : "text"}
+                              placeholder={`Enter new ${v.label}…`}
+                              value={currentVal}
+                              onChange={(e) => setEditing((prev) => ({ ...prev, [v.key]: e.target.value }))}
+                              className="pr-10 font-mono text-xs bg-background/50"
+                              autoFocus
+                            />
+                            {v.sensitive && (
+                              <button
+                                type="button"
+                                onClick={() => setShowVal((s) => ({ ...s, [v.key]: !s[v.key] }))}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              >
+                                {showVal[v.key] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              </button>
+                            )}
+                          </div>
+                          <Button size="sm" disabled={saving[v.key]} onClick={() => handleSave(v.key)} className="font-mono uppercase text-xs h-9">
+                            {saving[v.key] ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                          </Button>
+                          {v.source === "database" && (
+                            <Button size="sm" variant="outline" disabled={saving[v.key]} title="Remove DB override (revert to env var)" onClick={() => handleClear(v.key)} className="font-mono uppercase text-xs h-9 text-destructive border-destructive/40 hover:bg-destructive/10">
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => setEditing((e) => { const n = { ...e }; delete n[v.key]; return n; })} className="font-mono uppercase text-xs h-9">
+                            Cancel
+                          </Button>
+                        </div>
+                        {errors[v.key] && (
+                          <p className="text-xs text-destructive flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{errors[v.key]}</p>
+                        )}
+                        {saved[v.key] && (
+                          <p className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Saved</p>
+                        )}
+                      </div>
+                    )}
+
+                    {saved[v.key] && !editingNow && (
+                      <p className="text-xs text-green-400 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Saved</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 // ── Level badge ───────────────────────────────────────────────────────────────
@@ -138,7 +366,9 @@ function TokenTab({ settings, onSaved }: { settings: Settings | null; onSaved: (
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
+      {/* ── WebODM API Token ── */}
+      <div className="max-w-2xl space-y-6">
       {/* Current token */}
       <Card className="bg-card/50 border-border/50">
         <CardHeader className="pb-3">
@@ -212,6 +442,12 @@ function TokenTab({ settings, onSaved }: { settings: Settings | null; onSaved: (
           </Button>
         </CardContent>
       </Card>
+      </div>
+
+      {/* ── Environment Variables ── */}
+      <div className="border-t border-border/40 pt-6">
+        <EnvVarsSection />
+      </div>
     </div>
   );
 }

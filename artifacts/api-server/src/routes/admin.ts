@@ -245,6 +245,96 @@ router.put("/settings/webodm-token", requireSuperAdmin, async (req: AuthedReques
   res.json({ ok: true });
 });
 
+// ── Env var catalog ──────────────────────────────────────────────────────────
+const ENV_CATALOG = [
+  // ── Application ────────────────────────────────────────────────────────────
+  { key: "SESSION_SECRET",        category: "Application",   label: "Session Secret",            description: "JWT signing secret for local admin sessions. Requires server restart.", sensitive: true,  editable: true,  requiresRestart: true  },
+  { key: "LOG_LEVEL",             category: "Application",   label: "Log Level",                 description: "Pino log level: trace / debug / info / warn / error", sensitive: false, editable: true,  requiresRestart: false },
+  { key: "NODE_ENV",              category: "Application",   label: "Node Environment",          description: "Runtime mode (development / production). Set by the run script.", sensitive: false, editable: false, requiresRestart: true  },
+  { key: "PORT",                  category: "Application",   label: "Port",                      description: "Server listening port. Assigned by the platform.", sensitive: false, editable: false, requiresRestart: true  },
+  // ── Database ───────────────────────────────────────────────────────────────
+  { key: "DATABASE_URL",          category: "Database",      label: "Database URL",              description: "PostgreSQL connection string. Managed by the platform.", sensitive: true,  editable: false, requiresRestart: true  },
+  // ── Clerk Auth ─────────────────────────────────────────────────────────────
+  { key: "CLERK_SECRET_KEY",      category: "Clerk Auth",    label: "Clerk Secret Key",          description: "Clerk server-side API key. Update in Replit Secrets for production.", sensitive: true,  editable: true,  requiresRestart: true  },
+  { key: "CLERK_PUBLISHABLE_KEY", category: "Clerk Auth",    label: "Clerk Publishable Key",     description: "Clerk public key used by the backend proxy.", sensitive: false, editable: true,  requiresRestart: true  },
+  // ── WebODM / NodeODM ───────────────────────────────────────────────────────
+  { key: "WEBODM_LIGHTNING_TOKEN", category: "WebODM",       label: "WebODM Lightning Token",    description: "Managed via the API Token tab above.", sensitive: true,  editable: false, requiresRestart: false },
+] as const;
+
+type EnvKey = (typeof ENV_CATALOG)[number]["key"];
+
+function maskValue(val: string, sensitive: boolean): string {
+  if (!val) return "";
+  if (!sensitive) return val;
+  // Mask credentials inside URLs (e.g. postgresql://user:SECRET@host/db)
+  if (val.startsWith("postgresql://") || val.startsWith("postgres://")) {
+    return val.replace(/:([^:@/]+)@/, ":••••••••@");
+  }
+  if (val.length <= 8) return "••••••••";
+  return val.slice(0, 4) + "•".repeat(Math.min(val.length - 8, 28)) + val.slice(-4);
+}
+
+// ── GET /api/admin/env-vars — environment variable catalog ───────────────────
+router.get("/env-vars", requireSuperAdmin, async (_req: AuthedRequest, res: Response) => {
+  // Load all DB-stored env overrides
+  const dbRows = await db.select().from(appSettingsTable);
+  const dbMap = Object.fromEntries(
+    dbRows
+      .filter((r) => r.key.startsWith("env:"))
+      .map((r) => [r.key.slice(4), r.value])
+  );
+
+  const result = ENV_CATALOG.map((entry) => {
+    const envVal  = process.env[entry.key] ?? "";
+    const dbVal   = dbMap[entry.key];
+    const current = dbVal ?? envVal;
+    return {
+      key:             entry.key,
+      category:        entry.category,
+      label:           entry.label,
+      description:     entry.description,
+      sensitive:       entry.sensitive,
+      editable:        entry.editable,
+      requiresRestart: entry.requiresRestart,
+      source:          dbVal ? "database" : (envVal ? "environment" : "unset"),
+      masked:          maskValue(current, entry.sensitive),
+      isSet:           Boolean(current),
+    };
+  });
+
+  res.json(result);
+});
+
+// ── PUT /api/admin/env-vars/:key — save an env var override to DB ─────────────
+router.put("/env-vars/:key", requireSuperAdmin, async (req: AuthedRequest, res: Response) => {
+  const { key } = req.params as { key: string };
+  const entry = ENV_CATALOG.find((e) => e.key === key);
+
+  if (!entry) { res.status(404).json({ error: "Unknown environment variable" }); return; }
+  if (!entry.editable) { res.status(403).json({ error: "This variable cannot be edited here" }); return; }
+
+  const { value } = req.body as { value?: string };
+  if (value === undefined || value === null) { res.status(400).json({ error: "value is required" }); return; }
+
+  const trimmed = value.trim();
+  const dbKey = `env:${key}`;
+
+  if (trimmed === "") {
+    // Empty string = remove the DB override (fall back to real env var)
+    await db.delete(appSettingsTable).where(eq(appSettingsTable.key, dbKey));
+  } else {
+    await db
+      .insert(appSettingsTable)
+      .values({ key: dbKey, value: trimmed, updatedBy: req.userProfileId as any })
+      .onConflictDoUpdate({ target: appSettingsTable.key, set: { value: trimmed, updatedAt: new Date(), updatedBy: req.userProfileId as any } });
+    // Apply immediately where possible
+    if (key === "LOG_LEVEL") process.env.LOG_LEVEL = trimmed;
+  }
+
+  void log({ event: "env_var_updated", userId: req.userId, message: `Env var ${key} updated via settings UI`, meta: { key } });
+  res.json({ ok: true });
+});
+
 // ── GET /api/admin/logs — activity logs [super_admin] ────────────────────────
 router.get("/logs", requireSuperAdmin, async (req: AuthedRequest, res: Response) => {
   const limit = Math.min(parseInt((req.query.limit as string) ?? "200", 10), 500);
