@@ -670,7 +670,7 @@ export default function NewJob() {
                         <span>
                           {uploadPhase === "uploading"
                             ? `Uploading images... ${uploadProgress}%`
-                            : "Starting processing on NodeODM..."}
+                            : "Processing Orthophoto..."}
                         </span>
                         <span>{uploadProgress}%</span>
                       </div>

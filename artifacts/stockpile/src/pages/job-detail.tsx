@@ -282,9 +282,9 @@ export default function JobDetail() {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs font-mono text-muted-foreground">
                   <span>
-                    {job.status === 'queued' && 'Waiting in NodeODM queue…'}
-                    {job.status === 'running' && job.progress === 0 && 'Starting photogrammetry…'}
-                    {job.status === 'running' && job.progress > 0 && `Processing on NodeODM…`}
+                    {job.status === 'queued' && 'Waiting in queue…'}
+                    {job.status === 'running' && job.progress === 0 && 'Processing Orthophoto…'}
+                    {job.status === 'running' && job.progress > 0 && `Processing Orthophoto…`}
                     {job.status === 'completed' && 'Processing complete'}
                     {job.status === 'failed' && 'Processing failed'}
                   </span>
