@@ -172,6 +172,15 @@ export default function JobDetail() {
               Processing is complete. Draw your stockpile boundary on the map below to calculate volume and area.
             </p>
           </div>
+          <div className="flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-300 font-mono leading-relaxed">
+            <Mountain className="h-3.5 w-3.5 shrink-0 mt-0.5 text-sky-400" />
+            <span>
+              <span className="font-semibold text-sky-200">Tip:</span> To get the most accurate result, once the map opens, select the{" "}
+              <span className="text-white font-semibold">'Volume'</span> tool and ensure the{" "}
+              <span className="text-white font-semibold">'Base Surface'</span> is set to{" "}
+              <span className="text-white font-semibold">'Triangulated'</span>. This creates a custom floor following the ground contours.
+            </span>
+          </div>
           <Button
             size="default"
             variant="default"
@@ -346,6 +355,17 @@ export default function JobDetail() {
               </div>
             </div>
           </div>
+          {isCompleted && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-300 font-mono leading-relaxed">
+              <Mountain className="h-3.5 w-3.5 shrink-0 mt-0.5 text-sky-400" />
+              <span>
+                <span className="font-semibold text-sky-200">Tip:</span> To get the most accurate result, once the map opens, select the{" "}
+                <span className="text-white font-semibold">'Volume'</span> tool and ensure the{" "}
+                <span className="text-white font-semibold">'Base Surface'</span> is set to{" "}
+                <span className="text-white font-semibold">'Triangulated'</span>. This creates a custom floor following the ground contours.
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

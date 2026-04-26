@@ -302,6 +302,15 @@ export function PolygonDrawer({
               ? "Update the job name and/or redraw the polygon to recalculate volume."
               : "Click on the map to place vertices around your stockpile. Place at least 3 points, then click Calculate Volume."}
           </DialogDescription>
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-300 font-mono leading-relaxed">
+            <Mountain className="h-3.5 w-3.5 shrink-0 mt-0.5 text-sky-400" />
+            <span>
+              <span className="font-semibold text-sky-200">Tip:</span> To get the most accurate result, once the map opens, select the{" "}
+              <span className="text-white">'Volume'</span> tool and ensure the{" "}
+              <span className="text-white">'Base Surface'</span> is set to{" "}
+              <span className="text-white">'Triangulated'</span>. This creates a custom floor following the ground contours.
+            </span>
+          </div>
         </DialogHeader>
 
         {/* ── Name editor (edit mode only) ────────────────────────────────── */}
