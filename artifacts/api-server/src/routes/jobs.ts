@@ -72,8 +72,8 @@ router.get("/", async (req: AuthedRequest, res) => {
     ownerEmail: userProfilesTable.email,
   };
 
-  if (role === "super_admin") {
-    // All jobs
+  if (role === "super_admin" || role === "readonly") {
+    // super_admin and readonly both see all jobs (readonly cannot mutate via other routes)
     const rows = await db
       .select(selectWithOwner)
       .from(jobsTable)

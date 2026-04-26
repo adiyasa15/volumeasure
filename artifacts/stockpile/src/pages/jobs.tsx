@@ -44,6 +44,7 @@ export default function Jobs() {
   const { toast } = useToast();
   const { profile } = useUserProfile();
   const isElevated = profile?.role === "super_admin" || profile?.role === "admin";
+  const isReadOnly = profile?.role === "readonly";
 
   const [search, setSearch] = useState("");
   const [materialFilter, setMaterialFilter] = useState<string>("all");
@@ -97,11 +98,17 @@ export default function Jobs() {
           <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">Measurements</h1>
           <p className="text-muted-foreground">All stockpile volumetric analysis jobs.</p>
         </div>
-        <Link href="/jobs/new">
-          <Button className="font-mono uppercase">
+        {isReadOnly ? (
+          <Button className="font-mono uppercase" disabled title="Read-only access — contact an admin to create measurements">
             <Plus className="mr-2 h-4 w-4" /> New Measurement
           </Button>
-        </Link>
+        ) : (
+          <Link href="/jobs/new">
+            <Button className="font-mono uppercase">
+              <Plus className="mr-2 h-4 w-4" /> New Measurement
+            </Button>
+          </Link>
+        )}
       </div>
 
       <Card className="bg-card/50 border-border/50">
@@ -155,7 +162,7 @@ export default function Jobs() {
                 ? "You haven't created any measurement jobs yet."
                 : "No jobs match your current search filters."}
             </p>
-            {jobs?.length === 0 && (
+            {jobs?.length === 0 && !isReadOnly && (
               <Link href="/jobs/new" className="mt-4">
                 <Button variant="outline" className="font-mono uppercase">Create Job</Button>
               </Link>
@@ -170,7 +177,7 @@ export default function Jobs() {
                   <TableHead className="font-mono uppercase text-xs">Material</TableHead>
                   <TableHead className="font-mono uppercase text-xs">Status</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
-                  {isElevated && (
+                  {(isElevated || isReadOnly) && (
                     <TableHead className="font-mono uppercase text-xs">Owner</TableHead>
                   )}
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
@@ -209,7 +216,7 @@ export default function Jobs() {
                     <TableCell className="text-right font-mono font-medium">
                       {job.volumeM3 ? job.volumeM3.toLocaleString() : '-'}
                     </TableCell>
-                    {isElevated && (
+                    {(isElevated || isReadOnly) && (
                       <TableCell className="text-sm text-muted-foreground font-mono">
                         <span className="flex items-center gap-1.5">
                           <User className="h-3 w-3 shrink-0" />
@@ -221,44 +228,46 @@ export default function Jobs() {
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
                     </TableCell>
 
-                    {/* ── Actions menu ── */}
+                    {/* ── Actions menu (hidden for readonly) ── */}
                     <TableCell className="text-right p-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
-                          <DropdownMenuItem
-                            className="gap-2 cursor-pointer"
-                            onSelect={() =>
-                              setEditTarget({
-                                id: job.id,
-                                name: job.name,
-                                center:
-                                  job.latitude != null && job.longitude != null
-                                    ? [job.latitude, job.longitude]
-                                    : null,
-                                initialVertices: (job.polygonCoordinates as [number, number][] | null) ?? [],
-                              })
-                            }
-                          >
-                            <Pencil className="h-3.5 w-3.5" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
-                            onSelect={() => setDeleteTarget({ id: job.id, name: job.name })}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {!isReadOnly && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
+                            <DropdownMenuItem
+                              className="gap-2 cursor-pointer"
+                              onSelect={() =>
+                                setEditTarget({
+                                  id: job.id,
+                                  name: job.name,
+                                  center:
+                                    job.latitude != null && job.longitude != null
+                                      ? [job.latitude, job.longitude]
+                                      : null,
+                                  initialVertices: (job.polygonCoordinates as [number, number][] | null) ?? [],
+                                })
+                              }
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                              onSelect={() => setDeleteTarget({ id: job.id, name: job.name })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
