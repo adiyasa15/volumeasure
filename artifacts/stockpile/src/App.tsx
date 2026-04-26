@@ -5,6 +5,8 @@ import { Switch, Route, useLocation, Router as WouterRouter } from 'wouter';
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { initAuthTokenGetter, getLocalAdminToken } from "@/lib/adminAuth";
+import { UserProfileProvider, useUserProfile } from "@/context/UserProfileContext";
 
 // Pages
 import NotFound from "@/pages/not-found";
@@ -13,7 +15,13 @@ import Dashboard from "@/pages/dashboard";
 import Jobs from "@/pages/jobs";
 import NewJob from "@/pages/new-job";
 import JobDetail from "@/pages/job-detail";
+import AdminLogin from "@/pages/admin-login";
+import PendingApproval from "@/pages/pending-approval";
+import AdminUsers from "@/pages/admin-users";
 import { AppLayout } from "@/components/layout";
+
+// Initialise localStorage → Bearer token getter before any API calls
+initAuthTokenGetter();
 
 const queryClient = new QueryClient();
 
@@ -82,8 +90,6 @@ const clerkAppearance = {
 };
 
 function SignInPage() {
-  // To update login providers, app branding, or OAuth settings use the Auth
-  // pane in the workspace toolbar. More information can be found in the Replit docs.
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 relative">
       <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
@@ -95,8 +101,6 @@ function SignInPage() {
 }
 
 function SignUpPage() {
-  // To update login providers, app branding, or OAuth settings use the Auth
-  // pane in the workspace toolbar. More information can be found in the Replit docs.
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 relative">
       <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
@@ -107,27 +111,68 @@ function SignUpPage() {
   );
 }
 
+/** Gate: shows PendingApproval for pending/suspended Clerk users */
+function ApprovalGate({ children }: { children: React.ReactNode }) {
+  const { profile, loading } = useUserProfile();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background dark">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (profile && profile.status !== "approved") {
+    return <PendingApproval />;
+  }
+
+  return <>{children}</>;
+}
+
 function HomeRedirect() {
   const [, setLocation] = useLocation();
+  const isLocalAdmin = Boolean(getLocalAdminToken());
+
   return (
     <>
       <Show when="signed-in">
-        <AppLayout>
-          <Switch>
-            <Route path="/" component={() => {
-              useEffect(() => { setLocation('/dashboard'); }, []);
-              return null;
-            }} />
-            <Route path="/dashboard" component={Dashboard} />
-            <Route path="/jobs" component={Jobs} />
-            <Route path="/jobs/new" component={NewJob} />
-            <Route path="/jobs/:id" component={JobDetail} />
-            <Route component={NotFound} />
-          </Switch>
-        </AppLayout>
+        <ApprovalGate>
+          <AppLayout>
+            <Switch>
+              <Route path="/" component={() => {
+                useEffect(() => { setLocation('/dashboard'); }, []);
+                return null;
+              }} />
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/jobs" component={Jobs} />
+              <Route path="/jobs/new" component={NewJob} />
+              <Route path="/jobs/:id" component={JobDetail} />
+              <Route path="/admin/users" component={AdminUsers} />
+              <Route component={NotFound} />
+            </Switch>
+          </AppLayout>
+        </ApprovalGate>
       </Show>
       <Show when="signed-out">
-        <Home />
+        {isLocalAdmin ? (
+          <AppLayout>
+            <Switch>
+              <Route path="/" component={() => {
+                useEffect(() => { setLocation('/dashboard'); }, []);
+                return null;
+              }} />
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/jobs" component={Jobs} />
+              <Route path="/jobs/new" component={NewJob} />
+              <Route path="/jobs/:id" component={JobDetail} />
+              <Route path="/admin/users" component={AdminUsers} />
+              <Route component={NotFound} />
+            </Switch>
+          </AppLayout>
+        ) : (
+          <Home />
+        )}
       </Show>
     </>
   );
@@ -181,15 +226,18 @@ function ClerkProviderWithRoutes() {
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
       <QueryClientProvider client={queryClient}>
-        <ClerkQueryClientCacheInvalidator />
-        <TooltipProvider>
-          <Switch>
-            <Route path="/sign-in/*?" component={SignInPage} />
-            <Route path="/sign-up/*?" component={SignUpPage} />
-            <Route path="/*" component={HomeRedirect} />
-          </Switch>
-          <Toaster />
-        </TooltipProvider>
+        <UserProfileProvider>
+          <ClerkQueryClientCacheInvalidator />
+          <TooltipProvider>
+            <Switch>
+              <Route path="/sign-in/*?" component={SignInPage} />
+              <Route path="/sign-up/*?" component={SignUpPage} />
+              <Route path="/admin-login" component={AdminLogin} />
+              <Route path="/*" component={HomeRedirect} />
+            </Switch>
+            <Toaster />
+          </TooltipProvider>
+        </UserProfileProvider>
       </QueryClientProvider>
     </ClerkProvider>
   );

@@ -1,7 +1,6 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { getAuth } from "@clerk/express";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { db, jobsTable, type StoredImage } from "@workspace/db";
+import { Router, type IRouter } from "express";
+import { and, desc, eq, inArray, not } from "drizzle-orm";
+import { db, jobsTable, userProfilesTable, type StoredImage } from "@workspace/db";
 import {
   CreateJobBody,
   GetJobParams,
@@ -26,24 +25,15 @@ import {
   fetchOrthophotoJpeg,
 } from "../lib/webodm";
 import multer from "multer";
-
-interface AuthedRequest extends Request {
-  userId?: string;
-}
-
-function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
-  const auth = getAuth(req);
-  const userId = (auth?.sessionClaims as { userId?: string } | undefined)?.userId || auth?.userId;
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  req.userId = userId;
-  next();
-}
+import {
+  requireAuth,
+  requireApproved,
+  requireUser,
+  type AuthedRequest,
+} from "../lib/roleAuth";
 
 const router: IRouter = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireApproved);
 
 /** Multer instance — keeps files in memory for NodeODM proxying. */
 const upload = multer({
@@ -52,9 +42,54 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/jobs — list all jobs for the current user
+// GET /api/jobs — list jobs, filtered by role
+// super_admin → all jobs
+// admin → own + all ordinary-user (role=user/readonly) jobs
+// user/readonly → own jobs only
 // ---------------------------------------------------------------------------
 router.get("/", async (req: AuthedRequest, res) => {
+  const role = req.userRole!;
+
+  if (role === "super_admin") {
+    // All jobs
+    const rows = await db
+      .select()
+      .from(jobsTable)
+      .orderBy(desc(jobsTable.createdAt));
+    res.json(rows.map(rowToJob));
+    return;
+  }
+
+  if (role === "admin") {
+    // Own jobs + all ordinary-user jobs (exclude super_admin & other admin user IDs)
+    const adminAndSuperIds = await db
+      .select({ clerkUserId: userProfilesTable.clerkUserId })
+      .from(userProfilesTable)
+      .where(inArray(userProfilesTable.role, ["super_admin", "admin"]));
+    const excludeIds = adminAndSuperIds
+      .map((r) => r.clerkUserId)
+      .filter(Boolean) as string[];
+
+    let rows;
+    if (excludeIds.length === 0) {
+      rows = await db.select().from(jobsTable).orderBy(desc(jobsTable.createdAt));
+    } else {
+      // Include own jobs + jobs not belonging to excluded users
+      rows = await db
+        .select()
+        .from(jobsTable)
+        .where(
+          and(
+            not(inArray(jobsTable.userId, excludeIds.filter((id) => id !== req.userId!)))
+          ),
+        )
+        .orderBy(desc(jobsTable.createdAt));
+    }
+    res.json(rows.map(rowToJob));
+    return;
+  }
+
+  // user / readonly — own only
   const rows = await db
     .select()
     .from(jobsTable)
@@ -67,7 +102,7 @@ router.get("/", async (req: AuthedRequest, res) => {
 // POST /api/jobs — create a job shell + NodeODM task, return job ID
 // Images are NOT uploaded here; use POST /:id/images + POST /:id/commit next.
 // ---------------------------------------------------------------------------
-router.post("/", async (req: AuthedRequest, res) => {
+router.post("/", requireUser, async (req: AuthedRequest, res) => {
   const parsed = CreateJobBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid body", issues: parsed.error.issues });
@@ -153,7 +188,7 @@ router.get("/:id", async (req: AuthedRequest, res) => {
 // ---------------------------------------------------------------------------
 // PATCH /api/jobs/:id — update editable fields (name, notes)
 // ---------------------------------------------------------------------------
-router.patch("/:id", async (req: AuthedRequest, res) => {
+router.patch("/:id", requireUser, async (req: AuthedRequest, res) => {
   const parsed = GetJobParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });
@@ -184,7 +219,7 @@ router.patch("/:id", async (req: AuthedRequest, res) => {
 // ---------------------------------------------------------------------------
 // DELETE /api/jobs/:id — delete job + remove NodeODM task
 // ---------------------------------------------------------------------------
-router.delete("/:id", async (req: AuthedRequest, res) => {
+router.delete("/:id", requireUser, async (req: AuthedRequest, res) => {
   const parsed = DeleteJobParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });
@@ -213,6 +248,7 @@ router.delete("/:id", async (req: AuthedRequest, res) => {
 // ---------------------------------------------------------------------------
 router.post(
   "/:id/images",
+  requireUser,
   upload.array("images", 500),
   async (req: AuthedRequest & { files?: Express.Multer.File[] }, res) => {
     const { id } = req.params;
@@ -262,7 +298,7 @@ router.post(
 // ---------------------------------------------------------------------------
 // POST /api/jobs/:id/commit — start NodeODM processing after all images uploaded
 // ---------------------------------------------------------------------------
-router.post("/:id/commit", async (req: AuthedRequest, res) => {
+router.post("/:id/commit", requireUser, async (req: AuthedRequest, res) => {
   const { id } = req.params;
   const [row] = await db
     .select()
@@ -309,7 +345,7 @@ router.post("/:id/commit", async (req: AuthedRequest, res) => {
 // POST /api/jobs/:id/refresh — poll NodeODM for the latest status
 // Falls back to a simulated demo progression when no NodeODM task exists.
 // ---------------------------------------------------------------------------
-router.post("/:id/refresh", async (req: AuthedRequest, res) => {
+router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
   const parsed = RefreshJobParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });
@@ -636,7 +672,7 @@ router.get("/:id/orthophoto-jpeg", async (req: AuthedRequest, res) => {
 // ---------------------------------------------------------------------------
 // PATCH /api/jobs/:id/polygon — save manual polygon, compute volume + area
 // ---------------------------------------------------------------------------
-router.patch("/:id/polygon", async (req: AuthedRequest, res) => {
+router.patch("/:id/polygon", requireUser, async (req: AuthedRequest, res) => {
   const parsed = RefreshJobParams.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid id" });
@@ -765,5 +801,4 @@ function synthesizePolygon(lat: number | null, lng: number | null): number[][] |
   return points;
 }
 
-export const _internal = { sql };
 export default router;

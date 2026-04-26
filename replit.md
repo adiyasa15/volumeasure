@@ -12,9 +12,15 @@ volume (m³) and area. Industrial dark-mode dashboard with Clerk auth, Leaflet m
 and client-side EXIF GPS + sharpness pre-filtering (`exifr`).
 
 Backend (`artifacts/api-server`):
-- Clerk-authenticated REST under `/api` (jobs CRUD, refresh, dashboard summary, recent activity).
+- Dual-auth REST under `/api`: local JWT (Bearer) for admin users, Clerk cookie session for regular users.
+- Auth middleware in `artifacts/api-server/src/lib/roleAuth.ts` — checks Bearer first, falls back to Clerk, auto-creates pending profile for first-time Clerk users.
+- Roles: `super_admin`, `admin`, `user`, `readonly`. Statuses: `pending`, `approved`, `suspended`.
+- New users via Clerk start as `pending`; an admin must approve them before they can access the app.
+- Superadmin: username `superadmin`, local password, logs in at `/admin-login`. JWT issued for 8h.
+- Admin endpoints: `POST /api/admin/auth/login`, `GET /api/admin/me`, `GET /api/admin/users`, `POST /api/admin/users`, `PATCH /api/admin/users/:id`, `DELETE /api/admin/users/:id`.
+- Job visibility: super_admin → all jobs; admin → own + ordinary-user jobs; user/readonly → own only.
 - WebODM Lightning client uses `Authorization: JWT $WEBODM_LIGHTNING_TOKEN`; status codes 10/20/40 → queued/running/completed; 30/50 → failed. When token is missing, the refresh route falls back to a deterministic demo progression so the UI stays functional.
-- Drizzle schema: `lib/db/src/schema/jobs.ts` (`jobs` table keyed by Clerk userId).
+- Drizzle schema: `lib/db/src/schema/jobs.ts` + `lib/db/src/schema/user_profiles.ts`.
 
 ## Stack
 
