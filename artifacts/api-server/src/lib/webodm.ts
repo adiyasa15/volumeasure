@@ -1,4 +1,10 @@
 import { logger } from "./logger";
+import { createWriteStream, createReadStream } from "fs";
+import { unlink } from "fs/promises";
+import { pipeline } from "stream/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { randomUUID } from "crypto";
 
 const NODE_BASE = "https://spark1.webodm.net";
 
@@ -333,40 +339,43 @@ async function fetchOrthophotoTiff(uuid: string): Promise<Buffer | null> {
 }
 
 /**
- * Fallback: download the all.zip from the NodeODM S3 redirect and extract
- * odm_orthophoto/odm_orthophoto.tif from the ZIP buffer using unzipper.
+ * Fallback: download the all.zip from NodeODM to a local temp file, then
+ * extract odm_orthophoto/odm_orthophoto.tif from it using unzipper.
  *
- * NodeODM with optimize-disk-space=true (server default on spark1.webodm.net)
- * uploads outputs to S3 and removes local files. The /download/all.zip endpoint
- * does a 301 redirect to the S3 bucket where the zip is still available.
- *
- * Strategy: download the full zip into a Buffer, then use unzipper.Open.buffer
- * for random-access extraction without streaming backpressure issues.
- * The result is cached in the DB so this expensive download only happens once.
+ * The zip is streamed straight to disk — no in-memory zip buffer.
+ * The temp file is always removed in the finally block.
  */
 async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> {
+  const tmpPath = join(tmpdir(), `pilemetric-${uuid}-${randomUUID()}.zip`);
   try {
-    logger.info({ uuid }, "Downloading all.zip from S3 for orthophoto extraction");
+    // ── 1. Stream all.zip to a local temp file ──────────────────────────────
+    logger.info({ uuid, tmpPath }, "Downloading all.zip to local temp file for orthophoto extraction");
     const res = await fetch(qs(`/task/${uuid}/download/all.zip`), { redirect: "follow" });
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       logger.warn({ uuid, status: res.status }, "all.zip download failed");
       return null;
     }
-    const zipBuf = Buffer.from(await res.arrayBuffer());
-    logger.info({ uuid, bytes: zipBuf.byteLength }, "all.zip downloaded");
 
+    await pipeline(
+      res.body as unknown as NodeJS.ReadableStream,
+      createWriteStream(tmpPath),
+    );
+    logger.info({ uuid, tmpPath }, "all.zip saved to temp file");
+
+    // ── 2. Open zip from file and locate the orthophoto entry ───────────────
     const unzipper = await import("unzipper");
-    const directory = await (unzipper as any).Open.buffer(zipBuf);
+    const directory = await (unzipper as any).Open.file(tmpPath);
 
     const entry = (directory.files as Array<{ path: string; stream: () => NodeJS.ReadableStream }>)
-      .find((f) => f.path.endsWith("odm_orthophoto.tif"));
+      .find((f: { path: string }) => f.path.endsWith("odm_orthophoto.tif"));
 
     if (!entry) {
       logger.warn({ uuid, entries: (directory.files as any[]).length }, "odm_orthophoto.tif not found in all.zip");
       return null;
     }
 
-    logger.info({ uuid, entry: entry.path }, "Extracting orthophoto from all.zip");
+    // ── 3. Stream the TIF entry into memory (only the TIF, not the whole zip) ─
+    logger.info({ uuid, entry: entry.path }, "Extracting orthophoto from local zip");
     const chunks: Buffer[] = [];
     await new Promise<void>((resolve, reject) => {
       entry.stream()
@@ -375,12 +384,13 @@ async function fetchOrthophotoTiffFromZip(uuid: string): Promise<Buffer | null> 
         .on("error", reject);
     });
 
-    // Release the zip buffer from memory — we only needed it to read the directory
-    // and extract one entry. The extracted TIF chunk is all we return.
     return Buffer.concat(chunks);
   } catch (err) {
     logger.error({ err, uuid }, "fetchOrthophotoTiffFromZip error");
     return null;
+  } finally {
+    // Always remove the temp zip file
+    unlink(tmpPath).catch(() => {});
   }
 }
 
@@ -402,14 +412,15 @@ export type FetchOrthophotoResult = {
  *
  * Strategy:
  *  1. Try the direct asset path (works when optimize-disk-space=false).
- *  2. Fall back to extracting odm_orthophoto.tif from the all.zip S3 download
+ *  2. Fall back to downloading all.zip to a local temp file, extracting
+ *     odm_orthophoto.tif from it, then deleting the temp zip immediately.
  *     (handles tasks that ran with optimize-disk-space=true on spark1.webodm.net).
  *
  * Cleanup guarantee:
- *  - All in-memory buffers (zip, tif, jpeg) are released once the function
- *    returns — JavaScript GC reclaims them automatically.
+ *  - The temp zip file is always deleted by fetchOrthophotoTiffFromZip's finally block.
+ *  - All in-memory buffers (tif, jpeg) are released once the function returns.
  *  - The caller MUST invoke result.purge() after writing to DB to permanently
- *    remove the NodeODM task and its S3 data (zip fallback path only).
+ *    remove the NodeODM task (zip fallback path only).
  *
  * Returns null on failure.
  */
