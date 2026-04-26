@@ -1,6 +1,6 @@
 import { type Request, type Response, type NextFunction } from "express";
-import { getAuth } from "@clerk/express";
-import { eq, or, isNull } from "drizzle-orm";
+import { getAuth, clerkClient } from "@clerk/express";
+import { eq, or, isNull, and } from "drizzle-orm";
 import { db, userProfilesTable } from "@workspace/db";
 import type { UserRole, UserStatus } from "@workspace/db";
 import jwt from "jsonwebtoken";
@@ -84,20 +84,55 @@ export async function requireAuth(
     .limit(1);
 
   if (!profile) {
-    // First login — create pending profile
-    const email = (auth?.sessionClaims?.email as string | undefined) ?? "";
-    const name = (auth?.sessionClaims?.name as string | undefined) ?? email;
-    const [created] = await db
-      .insert(userProfilesTable)
-      .values({
-        clerkUserId: clerkId,
-        email,
-        displayName: name,
-        role: "user",
-        status: "pending",
-      })
-      .returning();
-    profile = created;
+    // Fetch the user's email from Clerk to match a pre-created profile
+    let email = (auth?.sessionClaims?.email as string | undefined) ?? "";
+    let name = (auth?.sessionClaims?.name as string | undefined) ?? "";
+    try {
+      const clerkUser = await clerkClient().users.getUser(clerkId);
+      email = clerkUser.emailAddresses?.[0]?.emailAddress ?? email;
+      name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || email;
+    } catch {
+      // silently fall back to session claims
+    }
+
+    // Check if a pre-created profile exists for this email (no clerkUserId yet)
+    if (email) {
+      const [existing] = await db
+        .select()
+        .from(userProfilesTable)
+        .where(
+          and(
+            eq(userProfilesTable.email, email),
+            isNull(userProfilesTable.clerkUserId),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        // Link the Clerk ID to the pre-created profile
+        const [linked] = await db
+          .update(userProfilesTable)
+          .set({ clerkUserId: clerkId, displayName: existing.displayName || name, updatedAt: new Date() })
+          .where(eq(userProfilesTable.id, existing.id))
+          .returning();
+        profile = linked;
+      }
+    }
+
+    if (!profile) {
+      // No pre-created profile — create a new pending one
+      const [created] = await db
+        .insert(userProfilesTable)
+        .values({
+          clerkUserId: clerkId,
+          email,
+          displayName: name || email,
+          role: "user",
+          status: "pending",
+        })
+        .returning();
+      profile = created;
+    }
   }
 
   req.userId = clerkId;

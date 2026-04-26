@@ -1,10 +1,20 @@
 import { SignInButton, SignUpButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
-import { Mountain, ArrowRight, Layers, Ruler, BarChart3 } from "lucide-react";
+import { Mountain, ArrowRight, Layers, Ruler, BarChart3, ShieldCheck } from "lucide-react";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-primary/30">
+      {/* Admin access — fixed top-right, always visible */}
+      <a
+        href={`${basePath}/admin-login`}
+        className="fixed top-4 right-4 z-50 inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors border border-border/50 hover:border-primary/50 rounded px-3 py-1.5 bg-background/90 backdrop-blur shadow-sm"
+      >
+        <ShieldCheck className="h-3 w-3" />
+        Admin Access
+      </a>
       <main className="flex-1">
         <section className="relative w-full min-h-[90vh] flex flex-col items-center justify-center overflow-hidden py-24 md:py-32">
           <div className="absolute inset-0 z-0">
