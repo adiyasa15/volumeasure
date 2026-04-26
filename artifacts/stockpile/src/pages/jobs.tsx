@@ -24,9 +24,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PolygonDrawer } from "@/components/polygon-drawer";
 import { format } from "date-fns";
-import { Loader2, Plus, Search, Layers, Pickaxe, Pencil, Trash2, MoreHorizontal, User } from "lucide-react";
+import { Loader2, Plus, Search, Layers, Pickaxe, Pencil, Trash2, MoreHorizontal, User, FileDown } from "lucide-react";
 import { useUserProfile } from "@/context/UserProfileContext";
-import { useState, useMemo } from "react";
+import { generateJobReport } from "@/lib/report";
+import { useState, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -51,6 +52,19 @@ export default function Jobs() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownloadReport = useCallback(async (job: NonNullable<typeof jobs>[number]) => {
+    if (downloadingId) return;
+    setDownloadingId(job.id);
+    try {
+      await generateJobReport(job);
+    } catch {
+      toast({ title: "Report failed", description: "Could not generate the PDF report.", variant: "destructive" });
+    } finally {
+      setDownloadingId(null);
+    }
+  }, [downloadingId, toast]);
 
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
@@ -181,6 +195,7 @@ export default function Jobs() {
                     <TableHead className="font-mono uppercase text-xs">Owner</TableHead>
                   )}
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
+                  <TableHead className="font-mono uppercase text-xs text-center w-[90px]">Report</TableHead>
                   <TableHead className="w-[48px]" />
                 </TableRow>
               </TableHeader>
@@ -226,6 +241,34 @@ export default function Jobs() {
                     )}
                     <TableCell className="text-right text-muted-foreground text-sm font-mono">
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
+                    </TableCell>
+
+                    {/* ── PDF Report download ── */}
+                    <TableCell className="text-center p-2">
+                      {job.status === "completed" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                          title="Download PDF report"
+                          disabled={downloadingId === job.id}
+                          onClick={(e) => { e.stopPropagation(); void handleDownloadReport(job); }}
+                        >
+                          {downloadingId === job.id
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <FileDown className="h-4 w-4" />}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground/30 cursor-not-allowed"
+                          title={`Report available once job is completed (currently ${job.status})`}
+                          disabled
+                        >
+                          <FileDown className="h-4 w-4" />
+                        </Button>
+                      )}
                     </TableCell>
 
                     {/* ── Actions menu (hidden for readonly) ── */}
