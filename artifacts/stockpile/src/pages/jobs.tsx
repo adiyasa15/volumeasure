@@ -1,15 +1,33 @@
-import { useListJobs, getListJobsQueryKey } from "@workspace/api-client-react";
+import { useListJobs, useDeleteJob, getListJobsQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PolygonDrawer } from "@/components/polygon-drawer";
 import { format } from "date-fns";
-import { Loader2, Plus, Search, Layers, Pickaxe, Pencil } from "lucide-react";
+import { Loader2, Plus, Search, Layers, Pickaxe, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 type EditTarget = {
   id: string;
@@ -20,11 +38,15 @@ type EditTarget = {
 
 export default function Jobs() {
   const { data: jobs, isLoading } = useListJobs();
+  const deleteJob = useDeleteJob();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [search, setSearch] = useState("");
   const [materialFilter, setMaterialFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
@@ -50,6 +72,19 @@ export default function Jobs() {
   const handleEditComplete = () => {
     queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
     setEditTarget(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteJob.mutateAsync({ id: deleteTarget.id });
+      queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      toast({ title: "Job deleted", description: `"${deleteTarget.name}" has been removed.` });
+    } catch {
+      toast({ title: "Delete failed", description: "Could not delete the job. Please try again.", variant: "destructive" });
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -133,7 +168,7 @@ export default function Jobs() {
                   <TableHead className="font-mono uppercase text-xs">Status</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
                   <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
-                  <TableHead className="font-mono uppercase text-xs text-right w-[80px]">Edit</TableHead>
+                  <TableHead className="w-[48px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -171,26 +206,45 @@ export default function Jobs() {
                     <TableCell className="text-right text-muted-foreground text-sm font-mono">
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Edit measurement"
-                        onClick={() =>
-                          setEditTarget({
-                            id: job.id,
-                            name: job.name,
-                            center:
-                              job.latitude != null && job.longitude != null
-                                ? [job.latitude, job.longitude]
-                                : null,
-                            initialVertices: (job.polygonCoordinates as [number, number][] | null) ?? [],
-                          })
-                        }
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+
+                    {/* ── Actions menu ── */}
+                    <TableCell className="text-right p-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity data-[state=open]:opacity-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40 font-mono text-xs">
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer"
+                            onSelect={() =>
+                              setEditTarget({
+                                id: job.id,
+                                name: job.name,
+                                center:
+                                  job.latitude != null && job.longitude != null
+                                    ? [job.latitude, job.longitude]
+                                    : null,
+                                initialVertices: (job.polygonCoordinates as [number, number][] | null) ?? [],
+                              })
+                            }
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                            onSelect={() => setDeleteTarget({ id: job.id, name: job.name })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -200,7 +254,7 @@ export default function Jobs() {
         )}
       </Card>
 
-      {/* Edit dialog */}
+      {/* ── Edit dialog ── */}
       {editTarget && (
         <PolygonDrawer
           open={!!editTarget}
@@ -214,6 +268,35 @@ export default function Jobs() {
           onComplete={handleEditComplete}
         />
       )}
+
+      {/* ── Delete confirmation dialog ── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent className="border-border/50 bg-background">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono uppercase">Delete Measurement?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-semibold text-foreground">"{deleteTarget?.name}"</span> and all
+              associated imagery and measurements. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono uppercase">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-mono uppercase"
+              onClick={handleConfirmDelete}
+              disabled={deleteJob.isPending}
+            >
+              {deleteJob.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
