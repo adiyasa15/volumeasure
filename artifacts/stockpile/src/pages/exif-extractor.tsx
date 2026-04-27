@@ -73,8 +73,24 @@ export default function ExifExtractor() {
       imageFiles.map(async (file) => {
         const id = `${file.name}-${file.size}-${file.lastModified}`;
         try {
-          const gps = await exifr.gps(file);
-          if (!gps || (gps.latitude == null && gps.longitude == null)) {
+          // Use full parse so we get raw GPS tags (GPSAltitude, GPSAltitudeRef)
+          // which exifr.gps() shorthand often misses for Samsung/Android devices.
+          // Do NOT disable tiff — Samsung JPEG GPS IFD is nested in the TIFF segment.
+          const parsed = await exifr.parse(file, {
+            gps: true,
+            tiff: true,
+            xmp: false,
+            icc: false,
+            iptc: false,
+            translateValues: true,
+            reviveValues: true,
+            sanitize: true,
+          });
+
+          if (
+            !parsed ||
+            (parsed.latitude == null && parsed.longitude == null)
+          ) {
             return {
               id,
               filename: file.name,
@@ -85,13 +101,29 @@ export default function ExifExtractor() {
             };
           }
 
-          // exifr returns { latitude, longitude, altitude }
+          // Altitude: exifr.parse() exposes GPSAltitude as a number (metres).
+          // GPSAltitudeRef: 0 = above sea level, 1 = below (negate).
+          // Also check .altitude as a fallback (computed by some exifr builds).
+          let altitude: number | null = null;
+          const rawAlt = parsed.GPSAltitude ?? parsed.altitude;
+          if (rawAlt != null) {
+            altitude = Number(rawAlt);
+            const ref = parsed.GPSAltitudeRef;
+            if (
+              ref === 1 ||
+              ref === "Below Sea Level" ||
+              ref === "Below sea level"
+            ) {
+              altitude = -altitude;
+            }
+          }
+
           return {
             id,
             filename: file.name,
-            longitude: gps.longitude ?? null,
-            latitude: gps.latitude ?? null,
-            altitude: gps.altitude ?? null,
+            longitude: parsed.longitude ?? null,
+            latitude: parsed.latitude ?? null,
+            altitude,
           };
         } catch {
           return {
