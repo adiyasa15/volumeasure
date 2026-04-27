@@ -84,18 +84,39 @@ export async function createTaskInit(
   if (!token()) return null;
   try {
     const options: Array<{ name: string; value: unknown }> = [
-      { name: "auto-boundary", value: true },
+      // ── Reconstruction quality ─────────────────────────────────────────────
+      // feature-quality: how many keypoints are detected per image.
+      // pc-quality:      density of the point cloud → directly affects DSM accuracy.
+      // Both must be 'high' for reliable volume measurements.
+      { name: "feature-quality", value: "high" },
+      { name: "pc-quality", value: "high" },
+
+      // ── Output rasters ─────────────────────────────────────────────────────
+      // DSM (surface model) and DTM (terrain model) are both required for the
+      // triangulated base-surface volume calculation.
+      // dem-resolution: explicit DSM/DTM pixel size in cm — do not inherit from
+      //   orthophoto-resolution which may differ on some ODM versions.
       { name: "dsm", value: true },
       { name: "dtm", value: true },
+      { name: "dem-resolution", value: 5 },
       { name: "orthophoto-resolution", value: 5 },
-      { name: "feature-quality", value: "high" },
+
+      // ── Misc ───────────────────────────────────────────────────────────────
+      { name: "auto-boundary", value: true },
       // Keep output assets on local disk so our server can fetch them for
-      // orthophoto JPEG caching. spark1.webodm.net defaults this to true,
-      // which causes it to upload to S3 and delete local files immediately
-      // after completion — making all /assets/* paths return 404 at once.
+      // orthophoto JPEG caching and DSM/DTM byte caching. spark1.webodm.net
+      // defaults this to true, which uploads to S3 and deletes local files
+      // immediately, making all /assets/* paths return 404 at once.
       { name: "optimize-disk-space", value: false },
     ];
-    // When a GCP file is provided, tell NodeODM to use it for georeferencing
+
+    // ── GCP georeferencing ───────────────────────────────────────────────────
+    // When a GCP file is provided:
+    //   manual-gcp: true  → tell ODM to use gcp_list.txt for georeferencing
+    //   force-gps: false  → do NOT override GCP alignment with image EXIF GPS
+    //                       (ODM default is already false; explicit for clarity)
+    // For non-GCP jobs we omit both — ODM will use EXIF GPS from images as the
+    // only georeferencing source, which is the correct default behaviour.
     if (opts.gcpFile) {
       options.push({ name: "manual-gcp", value: true });
       options.push({ name: "force-gps", value: false });
