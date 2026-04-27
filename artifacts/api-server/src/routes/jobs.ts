@@ -903,39 +903,61 @@ router.post("/:id/recalculate-dsm", requireUser, async (req: AuthedRequest, res)
     return;
   }
 
-  logger.info({ id: row.id, taskId: row.webodmTaskId }, "Manual DSM recalculation requested");
+  logger.info({ id: row.id, taskId: row.webodmTaskId, hasDsmCache: !!row.dsmCacheB64 }, "Manual DSM recalculation requested");
 
-  const vol = await calculateVolumeFromDSM(row.webodmTaskId, polygon);
+  let vol: { netM3: number; cutM3: number; fillM3: number; areaSqm: number; triangulated: boolean } | null = null;
+  let newDsmB64: string | null = null;
+  let newDtmB64: string | null = null;
+
+  // Priority 1: use cached GeoTIFF bytes (fastest, survives NodeODM cleanup)
+  if (row.dsmCacheB64) {
+    try {
+      const dsmBuf = Buffer.from(row.dsmCacheB64, "base64");
+      const dtmBuf = row.dtmCacheB64 ? Buffer.from(row.dtmCacheB64, "base64") : null;
+      vol = await calculateVolumeFromBuffers(dsmBuf, dtmBuf, polygon);
+      if (vol) logger.info({ id: row.id, triangulated: vol.triangulated }, "Recalculated from cached DSM/DTM bytes");
+    } catch (err) {
+      logger.warn({ err, id: row.id }, "Cached DSM parse failed, trying live download");
+    }
+  }
+
+  // Priority 2: live download (tries NodeODM path, then WebODM project API path)
+  if (!vol && row.webodmTaskId) {
+    const liveFull = await calculateVolumeFromDSM(row.webodmTaskId, polygon);
+    if (liveFull) {
+      vol = liveFull;
+      newDsmB64 = liveFull.rawDsm.toString("base64");
+      newDtmB64 = liveFull.rawDtm ? liveFull.rawDtm.toString("base64") : null;
+      logger.info({ id: row.id, triangulated: vol.triangulated }, "Recalculated via live DSM download");
+    }
+  }
+
   if (!vol) {
-    res.status(502).json({ error: "DSM unavailable on both NodeODM and WebODM paths" });
+    res.status(502).json({ error: "DSM unavailable — no cache and live download failed on all paths" });
     return;
   }
 
-  const dsmB64 = vol.rawDsm.toString("base64");
-  const dtmB64 = vol.rawDtm ? vol.rawDtm.toString("base64") : null;
-
   await db.update(jobsTable)
     .set({
-      volumeM3:    vol.netM3,
-      cutVolumeM3: vol.cutM3,
+      volumeM3:     vol.netM3,
+      cutVolumeM3:  vol.cutM3,
       fillVolumeM3: vol.fillM3,
-      areaSqm:     vol.areaSqm,
-      dsmCacheB64: dsmB64,
-      dtmCacheB64: dtmB64,
-      updatedAt:   new Date(),
+      areaSqm:      vol.areaSqm,
+      ...(newDsmB64 ? { dsmCacheB64: newDsmB64, dtmCacheB64: newDtmB64 } : {}),
+      updatedAt:    new Date(),
     })
     .where(eq(jobsTable.id, row.id));
 
   logger.info({ id: row.id, netM3: vol.netM3, cutM3: vol.cutM3, fillM3: vol.fillM3, triangulated: vol.triangulated },
-    "Job volume recalculated and DSM cached from WebODM path");
+    "Job volume recalculated successfully");
 
   res.json({
-    volumeM3:    vol.netM3,
-    cutVolumeM3: vol.cutM3,
+    volumeM3:     vol.netM3,
+    cutVolumeM3:  vol.cutM3,
     fillVolumeM3: vol.fillM3,
-    areaSqm:     vol.areaSqm,
+    areaSqm:      vol.areaSqm,
     triangulated: vol.triangulated,
-    dsmCached:   true,
+    dsmCached:    !!row.dsmCacheB64 || !!newDsmB64,
   });
 });
 
