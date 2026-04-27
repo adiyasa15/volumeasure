@@ -19,6 +19,7 @@ import AdminLogin from "@/pages/admin-login";
 import PendingApproval from "@/pages/pending-approval";
 import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
+import ExifExtractor from "@/pages/exif-extractor";
 import { AppLayout } from "@/components/layout";
 
 // Initialise localStorage → Bearer token getter before any API calls
@@ -168,6 +169,7 @@ function HomeRedirect() {
               <Route path="/jobs/:id" component={JobDetail} />
               <Route path="/admin/users" component={AdminUsers} />
               <Route path="/admin/settings" component={AdminSettings} />
+              <Route path="/tools/exif" component={ExifExtractor} />
               <Route component={NotFound} />
             </Switch>
           </AppLayout>
@@ -187,6 +189,7 @@ function HomeRedirect() {
               <Route path="/jobs/:id" component={JobDetail} />
               <Route path="/admin/users" component={AdminUsers} />
               <Route path="/admin/settings" component={AdminSettings} />
+              <Route path="/tools/exif" component={ExifExtractor} />
               <Route component={NotFound} />
             </Switch>
           </AppLayout>

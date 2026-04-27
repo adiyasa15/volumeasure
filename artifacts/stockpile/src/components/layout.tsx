@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
-import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings } from "lucide-react";
+import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings, ScanSearch } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useUserProfile } from "@/context/UserProfileContext";
@@ -11,6 +11,7 @@ const baseNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs", label: "Measurements", icon: FolderOpen },
   { href: "/jobs/new", label: "New Job", icon: Plus },
+  { href: "/tools/exif", label: "EXIF Extractor", icon: ScanSearch },
 ];
 
 const adminNavItem = { href: "/admin/users", label: "User Management", icon: Users };
