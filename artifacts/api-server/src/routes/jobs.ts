@@ -877,6 +877,68 @@ function computeDuration(start: Date | null, end: Date | null): number | null {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/jobs/:id/recalculate-dsm
+// Force a fresh DSM download + volume recalculation for an existing job,
+// using the saved polygon. Caches DSM bytes on success.
+// Useful when:
+//   - NodeODM assets were migrated to S3 (WebODM API path now works)
+//   - An admin wants to refresh stale volume numbers without re-uploading images
+// ---------------------------------------------------------------------------
+router.post("/:id/recalculate-dsm", requireUser, async (req: AuthedRequest, res) => {
+  const parsed = RefreshJobParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(jobByIdCondition(parsed.data.id, req))
+    .limit(1);
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row.webodmTaskId) { res.status(422).json({ error: "Job has no WebODM task ID" }); return; }
+
+  const polygon = row.polygonCoordinates as number[][] | null;
+  if (!polygon || polygon.length < 3) {
+    res.status(422).json({ error: "Job has no saved polygon — draw one first via the map editor" });
+    return;
+  }
+
+  logger.info({ id: row.id, taskId: row.webodmTaskId }, "Manual DSM recalculation requested");
+
+  const vol = await calculateVolumeFromDSM(row.webodmTaskId, polygon);
+  if (!vol) {
+    res.status(502).json({ error: "DSM unavailable on both NodeODM and WebODM paths" });
+    return;
+  }
+
+  const dsmB64 = vol.rawDsm.toString("base64");
+  const dtmB64 = vol.rawDtm ? vol.rawDtm.toString("base64") : null;
+
+  await db.update(jobsTable)
+    .set({
+      volumeM3:    vol.netM3,
+      cutVolumeM3: vol.cutM3,
+      fillVolumeM3: vol.fillM3,
+      areaSqm:     vol.areaSqm,
+      dsmCacheB64: dsmB64,
+      dtmCacheB64: dtmB64,
+      updatedAt:   new Date(),
+    })
+    .where(eq(jobsTable.id, row.id));
+
+  logger.info({ id: row.id, netM3: vol.netM3, cutM3: vol.cutM3, fillM3: vol.fillM3, triangulated: vol.triangulated },
+    "Job volume recalculated and DSM cached from WebODM path");
+
+  res.json({
+    volumeM3:    vol.netM3,
+    cutVolumeM3: vol.cutM3,
+    fillVolumeM3: vol.fillM3,
+    areaSqm:     vol.areaSqm,
+    triangulated: vol.triangulated,
+    dsmCached:   true,
+  });
+});
+
 /**
  * Convert an orthophoto bounding box [west, south, east, north] (WGS-84) to a
  * 4-corner polygon in [[lat, lng], …] order — matching the convention expected

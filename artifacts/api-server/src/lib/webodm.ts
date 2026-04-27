@@ -563,7 +563,7 @@ async function parseGeoTiff(buf: ArrayBuffer, label: string): Promise<ParsedRast
 }
 
 /**
- * Download a single GeoTIFF from NodeODM, returning both the parsed raster
+ * Download a single GeoTIFF from a URL, returning both the parsed raster
  * and the raw bytes so the caller can cache them.
  * Returns null when the asset is unavailable.
  */
@@ -588,17 +588,50 @@ async function fetchGeoTiff(
 }
 
 /**
+ * Build all candidate URLs for a NodeODM/WebODM task asset.
+ *
+ * spark1.webodm.net runs WebODM Lightning which may move completed task assets
+ * to S3 regardless of the `optimize-disk-space` flag. When that happens:
+ *   - The raw NodeODM path  (/task/{uuid}/assets/…)         → 404
+ *   - The WebODM project API path (/api/projects/1/tasks/…) → 200 (proxied from S3)
+ *
+ * We always try both, NodeODM path first.
+ */
+function assetUrls(uuid: string, assetPath: string): string[] {
+  return [
+    qs(`/task/${uuid}/assets/${assetPath}`),
+    qs(`/api/projects/1/tasks/${uuid}/assets/${assetPath}`),
+  ];
+}
+
+/**
+ * Try each URL in order, return the first successful GeoTIFF download.
+ */
+async function fetchGeoTiffMulti(
+  urls: string[],
+  label: string,
+): Promise<(ParsedRaster & { rawBuf: ArrayBuffer }) | null> {
+  for (const url of urls) {
+    const result = await fetchGeoTiff(url, label);
+    if (result) return result;
+  }
+  return null;
+}
+
+/**
  * Download the DSM (and DTM when available) raw GeoTIFF bytes for a NodeODM
  * task and return them as Buffers for persistent caching.
- * Returns null when the DSM is unavailable.
+ * Tries NodeODM path first, then WebODM project API path (for tasks whose
+ * assets were migrated to S3 by spark1.webodm.net).
+ * Returns null when the DSM is unavailable on both paths.
  */
 export async function fetchDsmDtmBuffers(
   uuid: string,
 ): Promise<{ dsm: Buffer; dtm: Buffer | null } | null> {
   if (!token()) return null;
-  const dsm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
+  const dsm = await fetchGeoTiffMulti(assetUrls(uuid, "odm_dem/dsm.tif"), "DSM");
   if (!dsm) return null;
-  const dtm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
+  const dtm = await fetchGeoTiffMulti(assetUrls(uuid, "odm_dem/dtm.tif"), "DTM");
   return {
     dsm: Buffer.from(dsm.rawBuf),
     dtm: dtm ? Buffer.from(dtm.rawBuf) : null,
@@ -778,10 +811,10 @@ export async function calculateVolumeFromDSM(
 ): Promise<(VolumeResult & { rawDsm: Buffer; rawDtm: Buffer | null }) | null> {
   if (!token()) return null;
 
-  const dsmFetch = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
+  const dsmFetch = await fetchGeoTiffMulti(assetUrls(uuid, "odm_dem/dsm.tif"), "DSM");
   if (!dsmFetch) return null;
 
-  const dtmFetch = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
+  const dtmFetch = await fetchGeoTiffMulti(assetUrls(uuid, "odm_dem/dtm.tif"), "DTM");
 
   const result = await computeVolumeFromRasters(dsmFetch, dtmFetch, polygonLatLng, { uuid });
   if (!result) return null;
