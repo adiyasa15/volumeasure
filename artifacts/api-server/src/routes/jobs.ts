@@ -22,6 +22,8 @@ import {
   deleteTask,
   orthophotoAssetUrl,
   calculateVolumeFromDSM,
+  calculateVolumeFromBuffers,
+  fetchDsmDtmBuffers,
   fetchOrthophotoJpeg,
 } from "../lib/webodm";
 import multer from "multer";
@@ -430,6 +432,8 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
 
         // ── Automatic mode: compute real DSM-based volume using survey bounds ──
         // This runs BEFORE the orthophoto purge so the NodeODM task is still alive.
+        // The raw DSM/DTM bytes are cached in the DB so edit-mode recalculation
+        // can reuse the same GCP-corrected rasters even after assets expire.
         if (!isManualMode && nextVolume == null) {
           try {
             const bounds = await fetchOrthophotoBounds(row.webodmTaskId!);
@@ -444,6 +448,18 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
                 nextPolygon    = boundsPolygon;
                 logger.info({ jobId: row.id, cutM3: vol.cutM3, fillM3: vol.fillM3, areaSqm: vol.areaSqm },
                   "Automatic DSM volume calculated from survey bounds");
+
+                // Cache DSM/DTM bytes for future polygon-edit recalculations.
+                // Fire-and-forget: volume result is already written; cache failure is non-fatal.
+                if (!row.dsmCacheB64 && vol.rawDsm) {
+                  const dsmB64 = vol.rawDsm.toString("base64");
+                  const dtmB64 = vol.rawDtm ? vol.rawDtm.toString("base64") : null;
+                  db.update(jobsTable)
+                    .set({ dsmCacheB64: dsmB64, dtmCacheB64: dtmB64 })
+                    .where(eq(jobsTable.id, row.id))
+                    .then(() => logger.info({ jobId: row.id }, "DSM/DTM bytes cached in DB"))
+                    .catch((err: unknown) => logger.warn({ err, jobId: row.id }, "DSM/DTM cache write failed"));
+                }
               }
             }
           } catch (err) {
@@ -456,6 +472,22 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
             nextVolume = Math.round((nextArea ?? 0) * 2.0 * 0.33 * 100) / 100;
             logger.info({ jobId: row.id }, "Using geometric volume estimate (DSM unavailable)");
           }
+        }
+
+        // ── Manual mode: cache DSM/DTM even before the user draws the polygon ──
+        // (The first polygon draw will use these cached bytes for volume calc.)
+        if (isManualMode && !row.dsmCacheB64 && row.webodmTaskId) {
+          fetchDsmDtmBuffers(row.webodmTaskId)
+            .then((bufs) => {
+              if (!bufs) return;
+              const dsmB64 = bufs.dsm.toString("base64");
+              const dtmB64 = bufs.dtm ? bufs.dtm.toString("base64") : null;
+              return db.update(jobsTable)
+                .set({ dsmCacheB64: dsmB64, dtmCacheB64: dtmB64 })
+                .where(eq(jobsTable.id, row.id));
+            })
+            .then(() => logger.info({ jobId: row.id }, "DSM/DTM bytes cached in DB (manual mode)"))
+            .catch((err: unknown) => logger.warn({ err, jobId: row.id }, "DSM/DTM cache write failed (manual mode)"));
         }
 
         if (!nextPolygon) {
@@ -724,28 +756,71 @@ router.patch("/:id/polygon", requireUser, async (req: AuthedRequest, res) => {
     return;
   }
 
-  // Attempt real DSM-based cut/fill calculation first
+  // Attempt real DSM-based cut/fill calculation — identical method to the
+  // initial processing so GCP-corrected rasters are always honoured.
+  //
+  // Priority order:
+  //   1. Cached DSM/DTM bytes in DB  (survives NodeODM asset expiry, fastest)
+  //   2. Live download from NodeODM  (for jobs not yet cached)
+  //   3. Geometric fallback          (last resort — logged as a warning)
   let cutM3: number | null = null;
   let fillM3: number | null = null;
   let netM3: number | null = null;
   let areaSqm: number | null = null;
 
-  if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
-    try {
-      const vol = await calculateVolumeFromDSM(row.webodmTaskId, polygonCoordinates);
-      if (vol) {
-        cutM3   = vol.cutM3;
-        fillM3  = vol.fillM3;
-        netM3   = vol.netM3;
-        areaSqm = vol.areaSqm;
+  if (row.orthophotoUrl === "tiles_ready") {
+    // ── Path 1: use cached GeoTIFF bytes if available ──────────────────────
+    if (row.dsmCacheB64) {
+      try {
+        const dsmBuf = Buffer.from(row.dsmCacheB64, "base64");
+        const dtmBuf = row.dtmCacheB64 ? Buffer.from(row.dtmCacheB64, "base64") : null;
+        const vol = await calculateVolumeFromBuffers(dsmBuf, dtmBuf, polygonCoordinates);
+        if (vol) {
+          cutM3   = vol.cutM3;
+          fillM3  = vol.fillM3;
+          netM3   = vol.netM3;
+          areaSqm = vol.areaSqm;
+          logger.info({ id: row.id, triangulated: vol.triangulated, gcpEnabled: row.gcpEnabled },
+            "Volume recalculated from cached DSM/DTM (GCP-corrected rasters)");
+        }
+      } catch (err) {
+        logger.warn({ err, id: row.id }, "Cached DSM volume calculation failed, trying live download");
       }
-    } catch (err) {
-      logger.warn({ err, id: row.id }, "DSM volume calculation failed, falling back");
+    }
+
+    // ── Path 2: live download from NodeODM (and cache the result) ──────────
+    if (netM3 == null && row.webodmTaskId) {
+      try {
+        const vol = await calculateVolumeFromDSM(row.webodmTaskId, polygonCoordinates);
+        if (vol) {
+          cutM3   = vol.cutM3;
+          fillM3  = vol.fillM3;
+          netM3   = vol.netM3;
+          areaSqm = vol.areaSqm;
+          logger.info({ id: row.id, triangulated: vol.triangulated, gcpEnabled: row.gcpEnabled },
+            "Volume recalculated via live NodeODM DSM download");
+
+          // Opportunistically cache for subsequent edits
+          if (!row.dsmCacheB64 && vol.rawDsm) {
+            const dsmB64 = vol.rawDsm.toString("base64");
+            const dtmB64 = vol.rawDtm ? vol.rawDtm.toString("base64") : null;
+            db.update(jobsTable)
+              .set({ dsmCacheB64: dsmB64, dtmCacheB64: dtmB64 })
+              .where(eq(jobsTable.id, row.id))
+              .then(() => logger.info({ id: row.id }, "DSM/DTM cached after live download in edit mode"))
+              .catch((err: unknown) => logger.warn({ err, id: row.id }, "DSM/DTM cache write failed in edit mode"));
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, id: row.id }, "Live DSM volume calculation failed, falling back to geometric");
+      }
     }
   }
 
-  // Geometric fallback when DSM unavailable
+  // ── Path 3: geometric fallback ─────────────────────────────────────────────
   if (netM3 == null) {
+    logger.warn({ id: row.id, gcpEnabled: row.gcpEnabled },
+      "DSM unavailable for volume recalc — using geometric estimate (less accurate)");
     areaSqm = Math.round(polygonAreaM2(polygonCoordinates) * 100) / 100;
     const heightEstimateM = 2.0;
     netM3 = Math.round(areaSqm * heightEstimateM * 0.33 * 100) / 100;

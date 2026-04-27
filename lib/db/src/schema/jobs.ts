@@ -63,6 +63,11 @@ export const jobsTable = pgTable(
       .defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     orthophotoJpegB64: text("orthophoto_jpeg_b64"),
+    /** Raw GeoTIFF bytes for the DSM, base64-encoded. Cached at job completion
+     *  so volume can be recalculated after NodeODM task assets expire. */
+    dsmCacheB64: text("dsm_cache_b64"),
+    /** Raw GeoTIFF bytes for the DTM, base64-encoded. Paired with dsmCacheB64. */
+    dtmCacheB64: text("dtm_cache_b64"),
   },
   (table) => ({
     userIdx: index("jobs_user_id_idx").on(table.userId),

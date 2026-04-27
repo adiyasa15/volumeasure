@@ -511,35 +511,77 @@ function pointInPoly(px: number, py: number, poly: [number, number][]): boolean 
   return inside;
 }
 
+type ParsedRaster = {
+  data: Float32Array | Int16Array | Uint16Array | Float64Array;
+  width: number;
+  height: number;
+  bbox: [number, number, number, number];
+  noData: number | null;
+  geoKeys: Record<string, unknown>;
+};
+
+/** Parse a GeoTIFF from an ArrayBuffer (already in memory). */
+async function parseGeoTiff(buf: ArrayBuffer, label: string): Promise<ParsedRaster | null> {
+  try {
+    const { fromArrayBuffer } = await import("geotiff");
+    const tiff = await fromArrayBuffer(buf);
+    const image = await tiff.getImage();
+    const rasters = await image.readRasters({ interleave: false });
+    return {
+      data: rasters[0] as Float32Array | Int16Array | Uint16Array | Float64Array,
+      width: image.getWidth(),
+      height: image.getHeight(),
+      bbox: image.getBoundingBox() as [number, number, number, number],
+      noData: image.getGDALNoData(),
+      geoKeys: image.getGeoKeys() as Record<string, unknown>,
+    };
+  } catch (err) {
+    logger.error({ err }, `${label} parse error`);
+    return null;
+  }
+}
+
 /**
- * Download a single GeoTIFF from NodeODM and parse it.
+ * Download a single GeoTIFF from NodeODM, returning both the parsed raster
+ * and the raw bytes so the caller can cache them.
  * Returns null when the asset is unavailable.
  */
-async function fetchGeoTiff(url: string, label: string) {
+async function fetchGeoTiff(
+  url: string,
+  label: string,
+): Promise<(ParsedRaster & { rawBuf: ArrayBuffer }) | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) {
       logger.warn({ url, status: res.status }, `${label} download failed`);
       return null;
     }
-    const { fromArrayBuffer } = await import("geotiff");
-    const buf = await res.arrayBuffer();
-    const tiff = await fromArrayBuffer(buf);
-    const image = await tiff.getImage();
-    const rasters = await image.readRasters({ interleave: false });
-    return {
-      image,
-      data: rasters[0] as Float32Array | Int16Array | Uint16Array | Float64Array,
-      width: image.getWidth(),
-      height: image.getHeight(),
-      bbox: image.getBoundingBox() as [number, number, number, number],
-      noData: image.getGDALNoData(),
-      geoKeys: image.getGeoKeys(),
-    };
+    const rawBuf = await res.arrayBuffer();
+    const parsed = await parseGeoTiff(rawBuf, label);
+    if (!parsed) return null;
+    return { ...parsed, rawBuf };
   } catch (err) {
     logger.error({ err, url }, `${label} fetch/parse error`);
     return null;
   }
+}
+
+/**
+ * Download the DSM (and DTM when available) raw GeoTIFF bytes for a NodeODM
+ * task and return them as Buffers for persistent caching.
+ * Returns null when the DSM is unavailable.
+ */
+export async function fetchDsmDtmBuffers(
+  uuid: string,
+): Promise<{ dsm: Buffer; dtm: Buffer | null } | null> {
+  if (!token()) return null;
+  const dsm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
+  if (!dsm) return null;
+  const dtm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
+  return {
+    dsm: Buffer.from(dsm.rawBuf),
+    dtm: dtm ? Buffer.from(dtm.rawBuf) : null,
+  };
 }
 
 /** Nearest-neighbour lookup of elevation at a native-CRS coordinate in a raster. */
@@ -560,54 +602,46 @@ function sampleRaster(
   return elev;
 }
 
+// ---------------------------------------------------------------------------
+// Shared volume integration kernel
+// ---------------------------------------------------------------------------
+
+const MAX_PIXELS = 25_000_000;
+
 /**
- * Download the NodeODM DSM (and DTM when available) for `uuid`, then compute
- * cut/fill volumes inside `polygonLatLng` (each element is [lat, lng] WGS-84).
- *
- * Base surface strategy (most-accurate-first):
- *   1. Triangulated — DTM elevation per pixel (follows ground contours)
- *   2. Flat-plane fallback — minimum elevation at polygon perimeter vertices
- *
- * Returns null when the DSM is unavailable or cannot be parsed.
+ * Core cut/fill integration over parsed DSM + optional DTM rasters.
+ * All public entry points delegate here.
  */
-export async function calculateVolumeFromDSM(
-  uuid: string,
+async function computeVolumeFromRasters(
+  dsm: ParsedRaster,
+  dtm: ParsedRaster | null,
   polygonLatLng: number[][],
+  logCtx: Record<string, unknown>,
 ): Promise<VolumeResult | null> {
-  if (!token()) return null;
-
-  // ── 1. Download DSM (required) ───────────────────────────────────────────
-  const dsm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
-  if (!dsm) return null;
-
-  const MAX_PIXELS = 25_000_000;
   if (dsm.width * dsm.height > MAX_PIXELS) {
-    logger.warn({ uuid, width: dsm.width, height: dsm.height }, "DSM too large for server-side volume calc");
+    logger.warn({ ...logCtx, width: dsm.width, height: dsm.height }, "DSM too large for server-side volume calc");
     return null;
   }
 
-  // ── 2. Try to download DTM for triangulated base surface ─────────────────
-  const dtm = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
   const triangulated = dtm !== null;
   if (triangulated) {
-    logger.info({ uuid }, "DTM available — using triangulated base surface for volume calc");
+    logger.info(logCtx, "DTM available — using triangulated base surface for volume calc");
   } else {
-    logger.info({ uuid }, "DTM unavailable — falling back to flat-plane (min perimeter) baseline");
+    logger.info(logCtx, "DTM unavailable — falling back to flat-plane (min perimeter) baseline");
   }
 
-  const { width, height, bbox, noData } = dsm;
+  const { width, height, bbox } = dsm;
   const pixelW = (bbox[2] - bbox[0]) / width;
   const pixelH = (bbox[3] - bbox[1]) / height;
 
-  // ── 3. Detect CRS & project polygon ─────────────────────────────────────
+  // ── Detect CRS & project polygon ────────────────────────────────────────
   const proj4Module = await import("proj4");
   const proj4: (srcProj: string, dstProj: string, coord: [number, number]) => [number, number] =
     (proj4Module.default as any).bind(proj4Module.default) ?? proj4Module.default;
 
-  const geoKeys = dsm.geoKeys;
   const epsg: number =
-    (geoKeys as any).ProjectedCSTypeGeoKey ||
-    (geoKeys as any).GeographicTypeGeoKey ||
+    (dsm.geoKeys as any).ProjectedCSTypeGeoKey ||
+    (dsm.geoKeys as any).GeographicTypeGeoKey ||
     4326;
 
   let polyNative: [number, number][];
@@ -623,7 +657,7 @@ export async function calculateVolumeFromDSM(
     }
   }
 
-  // ── 4. Pixel-area in m² ──────────────────────────────────────────────────
+  // ── Pixel-area in m² ────────────────────────────────────────────────────
   let pixelAreaM2: number;
   if (epsg === 4326 || epsg === 4269) {
     const centerLat = ((bbox[1] + bbox[3]) / 2) * (Math.PI / 180);
@@ -634,7 +668,7 @@ export async function calculateVolumeFromDSM(
     pixelAreaM2 = Math.abs(pixelW * pixelH);
   }
 
-  // ── 5. Flat-plane fallback baseline (used only when DTM is missing) ──────
+  // ── Flat-plane fallback baseline (used only when DTM is missing) ─────────
   let flatBaseline = 0;
   if (!triangulated) {
     const perimeterElevations: number[] = [];
@@ -643,13 +677,13 @@ export async function calculateVolumeFromDSM(
       if (elev !== null) perimeterElevations.push(elev);
     }
     if (perimeterElevations.length === 0) {
-      logger.warn({ uuid }, "No valid perimeter elevations found in DSM");
+      logger.warn(logCtx, "No valid perimeter elevations found in DSM");
       return null;
     }
     flatBaseline = Math.min(...perimeterElevations);
   }
 
-  // ── 6. Integrate cut / fill over interior DSM pixels ─────────────────────
+  // ── Integrate cut / fill over interior DSM pixels ────────────────────────
   let cutM3 = 0;
   let fillM3 = 0;
   let pixelCount = 0;
@@ -669,21 +703,16 @@ export async function calculateVolumeFromDSM(
 
   for (let row = rowStart; row <= rowEnd; row++) {
     for (let col = colStart; col <= colEnd; col++) {
-      // Pixel centre in native CRS
       const px = bbox[0] + (col + 0.5) * pixelW;
       const py = bbox[3] - (row + 0.5) * pixelH;
-
       if (!pointInPoly(px, py, polyNative)) continue;
 
       const surfaceElev = sampleRaster(px, py, dsm);
       if (surfaceElev === null) continue;
 
-      // Triangulated base: DTM elevation at this exact pixel location
-      // Flat-plane base:   minimum perimeter elevation (fallback)
       let baseElev: number;
       if (triangulated) {
         const dtmElev = sampleRaster(px, py, dtm!);
-        // If DTM has a gap here, fall back to the DSM value (zero height)
         baseElev = dtmElev ?? surfaceElev;
       } else {
         baseElev = flatBaseline;
@@ -708,4 +737,61 @@ export async function calculateVolumeFromDSM(
     pixelCount,
     triangulated,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public entry points
+// ---------------------------------------------------------------------------
+
+/**
+ * Download the NodeODM DSM (and DTM when available) for `uuid`, then compute
+ * cut/fill volumes inside `polygonLatLng` (each element is [lat, lng] WGS-84).
+ *
+ * Returns null when the DSM is unavailable or cannot be parsed.
+ * Also returns the raw DSM/DTM bytes via `rawDsm`/`rawDtm` so callers can
+ * cache them without a second download.
+ */
+export async function calculateVolumeFromDSM(
+  uuid: string,
+  polygonLatLng: number[][],
+): Promise<(VolumeResult & { rawDsm: Buffer; rawDtm: Buffer | null }) | null> {
+  if (!token()) return null;
+
+  const dsmFetch = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dsm.tif`), "DSM");
+  if (!dsmFetch) return null;
+
+  const dtmFetch = await fetchGeoTiff(qs(`/task/${uuid}/assets/odm_dem/dtm.tif`), "DTM");
+
+  const result = await computeVolumeFromRasters(dsmFetch, dtmFetch, polygonLatLng, { uuid });
+  if (!result) return null;
+
+  return {
+    ...result,
+    rawDsm: Buffer.from(dsmFetch.rawBuf),
+    rawDtm: dtmFetch ? Buffer.from(dtmFetch.rawBuf) : null,
+  };
+}
+
+/**
+ * Compute cut/fill volumes using pre-loaded, cached GeoTIFF bytes.
+ * This is used for polygon edits after NodeODM task assets have expired.
+ *
+ * @param dsmBuf  Raw GeoTIFF bytes of the DSM (required)
+ * @param dtmBuf  Raw GeoTIFF bytes of the DTM (optional — enables triangulated base)
+ * @param polygonLatLng  Polygon vertices as [lat, lng] pairs
+ */
+export async function calculateVolumeFromBuffers(
+  dsmBuf: Buffer,
+  dtmBuf: Buffer | null,
+  polygonLatLng: number[][],
+): Promise<VolumeResult | null> {
+  const dsm = await parseGeoTiff(dsmBuf.buffer.slice(dsmBuf.byteOffset, dsmBuf.byteOffset + dsmBuf.byteLength), "DSM (cached)");
+  if (!dsm) return null;
+
+  let dtm: ParsedRaster | null = null;
+  if (dtmBuf) {
+    dtm = await parseGeoTiff(dtmBuf.buffer.slice(dtmBuf.byteOffset, dtmBuf.byteOffset + dtmBuf.byteLength), "DTM (cached)");
+  }
+
+  return computeVolumeFromRasters(dsm, dtm, polygonLatLng, { source: "cached-buffers" });
 }
