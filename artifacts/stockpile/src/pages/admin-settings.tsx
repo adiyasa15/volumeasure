@@ -107,7 +107,7 @@ interface NodeOdmInfo {
 // ── Category icon ────────────────────────────────────────────────────────────
 function CategoryIcon({ category }: { category: string }) {
   if (category === "Database") return <Database className="h-3.5 w-3.5 text-blue-400" />;
-  if (category === "Clerk Auth") return <Globe className="h-3.5 w-3.5 text-purple-400" />;
+  if (category === "Google Auth") return <Globe className="h-3.5 w-3.5 text-blue-400" />;
   if (category === "WebODM") return <Server className="h-3.5 w-3.5 text-orange-400" />;
   return <Terminal className="h-3.5 w-3.5 text-muted-foreground" />;
 }

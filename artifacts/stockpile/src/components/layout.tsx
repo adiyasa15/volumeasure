@@ -1,11 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings, ScanSearch } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useUserProfile } from "@/context/UserProfileContext";
-import { getLocalAdminToken } from "@/lib/adminAuth";
+import { getActiveToken } from "@/lib/adminAuth";
 
 const baseNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -19,12 +18,10 @@ const settingsNavItem = { href: "/admin/settings", label: "Settings", icon: Sett
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { isSignedIn } = useAuth();
-  const { user } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { profile, isLocalAdmin, logout } = useUserProfile();
 
-  const isAuthenticated = isSignedIn || isLocalAdmin;
+  const isAuthenticated = Boolean(getActiveToken());
   const isAdmin = profile?.role === "super_admin" || profile?.role === "admin";
   const isReadOnly = profile?.role === "readonly";
 
@@ -38,9 +35,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     ...(profile?.role === "super_admin" ? [settingsNavItem] : []),
   ];
 
-  const displayName = isLocalAdmin
-    ? (profile?.displayName ?? profile?.username ?? "Admin")
-    : (user?.primaryEmailAddress?.emailAddress ?? "");
+  const displayName =
+    profile?.displayName ?? profile?.username ?? profile?.email ?? "User";
 
   const NavLinks = () => (
     <>
@@ -117,58 +113,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     {profile.role === "super_admin" ? "Super Admin" : "Admin"}
                   </span>
                 )}
-                {!isLocalAdmin && (
-                  <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block font-mono truncate max-w-[160px]">
                     {displayName}
                   </span>
-                )}
-                {isLocalAdmin ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block font-mono">
-                      {displayName}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={logout}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <LogOut className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <UserButton
-                    appearance={{
-                      variables: {
-                        colorBackground: "#1a1a1a",
-                        colorText: "#ffffff",
-                        colorTextSecondary: "rgba(255,255,255,0.7)",
-                        colorNeutral: "#ffffff",
-                      },
-                      elements: {
-                        avatarBox: "h-8 w-8 rounded-md",
-                        userButtonPopoverCard: {
-                          backgroundColor: "#1a1a1a",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-                        },
-                        userButtonPopoverActionButton: { color: "#ffffff" },
-                        userButtonPopoverActionButtonText: { color: "#ffffff" },
-                        userButtonPopoverActionButtonIcon: {
-                          color: "rgba(255,255,255,0.7)",
-                        },
-                        userButtonPopoverFooter: {
-                          borderTop: "1px solid rgba(255,255,255,0.1)",
-                        },
-                      },
-                    }}
-                  />
-                )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={logout}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Sign out"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ) : (
-              <SignInButton mode="modal">
+              <a href="/sign-in">
                 <Button size="sm">Sign In</Button>
-              </SignInButton>
+              </a>
             )}
           </div>
         </div>

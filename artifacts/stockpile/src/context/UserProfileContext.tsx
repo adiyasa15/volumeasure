@@ -6,10 +6,16 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { useAuth } from "@clerk/react";
-import { getLocalAdminToken, clearLocalAdminToken, type UserProfile } from "@/lib/adminAuth";
+import {
+  getLocalAdminToken,
+  getActiveToken,
+  clearLocalAdminToken,
+  clearGoogleToken,
+  type UserProfile,
+} from "@/lib/adminAuth";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+const basePath = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 interface UserProfileContextValue {
   profile: UserProfile | null;
@@ -30,58 +36,62 @@ const UserProfileContext = createContext<UserProfileContextValue>({
 });
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
-  const { isSignedIn, getToken, signOut } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const localAdminToken = getLocalAdminToken();
-  const isLocalAdmin = Boolean(localAdminToken);
+
+  const isLocalAdmin = Boolean(getLocalAdminToken());
+  const hasToken = Boolean(getActiveToken());
 
   const fetchProfile = useCallback(async () => {
+    const token = getActiveToken();
+    if (!token) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (localAdminToken) {
-        headers["Authorization"] = `Bearer ${localAdminToken}`;
-      }
       const res = await fetch(`${API_BASE}/admin/me`, {
         credentials: "include",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+      } else if (res.status === 401) {
+        clearLocalAdminToken();
+        clearGoogleToken();
+        setProfile(null);
       } else {
         setProfile(null);
-        if (res.status !== 401) {
-          setError(`Error ${res.status}`);
-        }
+        setError(`Error ${res.status}`);
       }
-    } catch (e) {
+    } catch {
       setError("Network error");
     } finally {
       setLoading(false);
     }
-  }, [localAdminToken]);
+  }, []);
 
   useEffect(() => {
-    if (isLocalAdmin || isSignedIn) {
-      fetchProfile();
+    if (hasToken) {
+      void fetchProfile();
     } else {
       setProfile(null);
       setLoading(false);
     }
-  }, [isLocalAdmin, isSignedIn, fetchProfile]);
+  }, [hasToken, fetchProfile]);
 
   const logout = useCallback(() => {
-    if (isLocalAdmin) {
-      clearLocalAdminToken();
-      window.location.href = window.location.origin + window.location.pathname.replace(/\/$/, "").split("/").slice(0, -1).join("/");
-    } else {
-      signOut();
-    }
-  }, [isLocalAdmin, signOut]);
+    clearLocalAdminToken();
+    clearGoogleToken();
+    window.location.href = `${window.location.origin}${basePath}/sign-in`;
+  }, []);
 
   return (
     <UserProfileContext.Provider

@@ -1,4 +1,3 @@
-import { SignInButton, SignUpButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Mountain, ArrowRight, Layers, Ruler, BarChart3, ShieldCheck } from "lucide-react";
 
@@ -44,16 +43,16 @@ export default function Home() {
               </p>
               
               <div className="flex flex-col sm:flex-row w-full max-w-sm gap-4 items-center justify-center mt-4">
-                <SignUpButton mode="modal">
-                  <Button size="lg" className="w-full sm:w-auto font-mono text-base h-12 px-8">
+                <a href={`${basePath}/sign-in`} className="w-full sm:w-auto">
+                  <Button size="lg" className="w-full font-mono text-base h-12 px-8">
                     Get Started <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                </SignUpButton>
-                <SignInButton mode="modal">
-                  <Button variant="outline" size="lg" className="w-full sm:w-auto font-mono text-base h-12 px-8">
+                </a>
+                <a href={`${basePath}/sign-in`} className="w-full sm:w-auto">
+                  <Button variant="outline" size="lg" className="w-full font-mono text-base h-12 px-8">
                     Sign In
                   </Button>
-                </SignInButton>
+                </a>
               </div>
             </div>
           </div>

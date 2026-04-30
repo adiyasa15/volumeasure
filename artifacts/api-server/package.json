@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@clerk/express": "^2.1.5",
     "@types/multer": "^2.1.0",
     "@types/unzipper": "^0.10.11",
     "@workspace/api-zod": "workspace:*",
@@ -21,7 +20,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "geotiff": "^3.0.5",
-    "http-proxy-middleware": "^3.0.5",
+    "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "pino": "^9",

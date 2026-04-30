@@ -256,9 +256,11 @@ const ENV_CATALOG = [
   { key: "PORT",                  category: "Application",   label: "Port",                      description: "Server listening port. Assigned by the platform.", sensitive: false, editable: false, requiresRestart: true  },
   // ── Database ───────────────────────────────────────────────────────────────
   { key: "DATABASE_URL",          category: "Database",      label: "Database URL",              description: "PostgreSQL connection string. Managed by the platform.", sensitive: true,  editable: false, requiresRestart: true  },
-  // ── Clerk Auth ─────────────────────────────────────────────────────────────
-  { key: "CLERK_SECRET_KEY",      category: "Clerk Auth",    label: "Clerk Secret Key",          description: "Clerk server-side API key. Update in Replit Secrets for production.", sensitive: true,  editable: true,  requiresRestart: true  },
-  { key: "CLERK_PUBLISHABLE_KEY", category: "Clerk Auth",    label: "Clerk Publishable Key",     description: "Clerk public key used by the backend proxy.", sensitive: false, editable: true,  requiresRestart: true  },
+  // ── Google OAuth ───────────────────────────────────────────────────────────
+  { key: "GOOGLE_CLIENT_ID",      category: "Google Auth",   label: "Google Client ID",          description: "OAuth 2.0 Client ID from Google Cloud Console.", sensitive: false, editable: true,  requiresRestart: true  },
+  { key: "GOOGLE_CLIENT_SECRET",  category: "Google Auth",   label: "Google Client Secret",      description: "OAuth 2.0 Client Secret from Google Cloud Console.", sensitive: true,  editable: true,  requiresRestart: true  },
+  { key: "GOOGLE_REDIRECT_URI",   category: "Google Auth",   label: "Google Redirect URI",       description: "Override the callback URL (e.g. https://yourdomain.com/api/auth/google/callback). Leave blank to auto-detect.", sensitive: false, editable: true,  requiresRestart: false },
+  { key: "FRONTEND_URL",          category: "Google Auth",   label: "Frontend URL",              description: "Override the frontend base URL for redirects after login (e.g. https://yourdomain.com). Leave blank to auto-detect.", sensitive: false, editable: true,  requiresRestart: false },
   // ── WebODM / NodeODM ───────────────────────────────────────────────────────
   { key: "WEBODM_LIGHTNING_TOKEN", category: "WebODM",       label: "WebODM Lightning Token",    description: "Managed via the API Token tab above.", sensitive: true,  editable: false, requiresRestart: false },
 ] as const;

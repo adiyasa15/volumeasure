@@ -1,25 +1,10 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { getAuth } from "@clerk/express";
+import { Router, type IRouter, type Response } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, jobsTable } from "@workspace/db";
-
-interface AuthedRequest extends Request {
-  userId?: string;
-}
-
-function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
-  const auth = getAuth(req);
-  const userId = (auth?.sessionClaims as { userId?: string } | undefined)?.userId || auth?.userId;
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  req.userId = userId;
-  next();
-}
+import { requireAuth, requireApproved, type AuthedRequest } from "../lib/roleAuth";
 
 const router: IRouter = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireApproved);
 
 router.get("/summary", async (req: AuthedRequest, res) => {
   const rows = await db

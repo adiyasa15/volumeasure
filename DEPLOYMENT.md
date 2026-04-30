@@ -53,8 +53,8 @@
                     └────────────────────────┘
                                 │
                     ┌───────────▼───────────┐
-                    │  Clerk Auth             │
-                    │  (clerk.com SaaS)       │
+                    │  Google OAuth 2.0       │
+                    │  (accounts.google.com)  │
                     └────────────────────────┘
 ```
 
@@ -86,7 +86,7 @@
 
 | Service | Purpose | Signup |
 |---|---|---|
-| **Clerk** | User authentication (OAuth + email/password) | https://clerk.com — free tier covers dev |
+| **Google Cloud** | OAuth 2.0 user authentication | https://console.cloud.google.com — create an OAuth 2.0 Client ID (Web application) |
 | **WebODM Lightning** | Photogrammetry processing (NodeODM SaaS) | https://webodm.net/lightning |
 
 ### Optional (for VM / Kubernetes only)
@@ -161,10 +161,13 @@ Create a `.env` file at the **project root** (or inject them into the runtime en
 # ----- Database -----
 DATABASE_URL=postgresql://user:password@localhost:5432/pilemetric
 
-# ----- Authentication (Clerk) -----
-# From Clerk Dashboard → API Keys
-CLERK_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxxxxxxxxx
-CLERK_SECRET_KEY=sk_live_xxxxxxxxxxxxxxxxxxxx
+# ----- Authentication (Google OAuth 2.0) -----
+# From Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Optional overrides — leave blank to auto-detect from the request origin
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
+FRONTEND_URL=https://yourdomain.com
 
 # ----- Session -----
 # Any long random string — used to sign local-admin JWTs
@@ -184,8 +187,9 @@ NODE_ENV=production
 These are read at **build time** by Vite (they are baked into the static bundle):
 
 ```dotenv
-# Clerk publishable key (safe to expose — starts with pk_)
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxxxxxxxxx
+# Optional: explicit API base URL when the frontend and API are on different domains
+# Defaults to /api (same-origin proxy). Only needed for split deployments.
+VITE_API_URL=https://api.yourdomain.com
 
 # Base path the frontend is served from (/ for root, /app for a sub-path)
 BASE_PATH=/
@@ -228,7 +232,7 @@ DATABASE_URL=postgresql://pilemetric_user:your_password@localhost:5432/pilemetri
 | Table | Purpose |
 |---|---|
 | `jobs` | Photogrammetry jobs — polygon, volume, DSM/DTM cache |
-| `user_profiles` | Clerk users + local admin accounts, role, status |
+| `user_profiles` | Google OAuth users + local admin accounts, role, status |
 | `activity_logs` | Audit trail — logins, job creation, deletions |
 | `app_settings` | Key-value store — WebODM token override, system config |
 
@@ -267,9 +271,10 @@ Output: `artifacts/api-server/dist/index.mjs` (single bundled ESM file via esbui
 
 ```bash
 BASE_PATH=/ \
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
 pnpm --filter @workspace/stockpile run build
 ```
+
+> If your frontend is on a different domain from the API, also pass `VITE_API_URL=https://api.yourdomain.com` before the build command.
 
 Output: `artifacts/stockpile/dist/public/` — static HTML/CSS/JS files ready to serve.
 
@@ -277,7 +282,8 @@ Output: `artifacts/stockpile/dist/public/` — static HTML/CSS/JS files ready to
 
 ```bash
 PORT=8080 NODE_ENV=production \
-  CLERK_SECRET_KEY=sk_live_xxx \
+  GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com \
+  GOOGLE_CLIENT_SECRET=GOCSPX-xxx \
   DATABASE_URL=postgresql://... \
   SESSION_SECRET=... \
   WEBODM_LIGHTNING_TOKEN=xxx \
@@ -354,12 +360,11 @@ jobs:
         run: pnpm --filter @workspace/stockpile run build
         env:
           BASE_PATH: /
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
 ```
 
 Add the following repository secrets in GitHub → Settings → Secrets:
-- `VITE_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 - `DATABASE_URL`
 - `SESSION_SECRET`
 - `WEBODM_LIGHTNING_TOKEN`
@@ -384,12 +389,15 @@ This is the simplest option. The frontend (static files) goes to Vercel/Netlify/
    ```
 5. Add environment variables in Railway dashboard:
    ```
-   DATABASE_URL         = (use Railway's built-in Postgres plugin)
-   CLERK_SECRET_KEY     = sk_live_xxx
-   SESSION_SECRET       = (64-char random string)
+   DATABASE_URL           = (use Railway's built-in Postgres plugin)
+   GOOGLE_CLIENT_ID       = xxx.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET   = GOCSPX-xxx
+   GOOGLE_REDIRECT_URI    = https://pilemetric-api.up.railway.app/api/auth/google/callback
+   FRONTEND_URL           = https://pilemetric.vercel.app
+   SESSION_SECRET         = (64-char random string)
    WEBODM_LIGHTNING_TOKEN = xxx
-   PORT                 = 8080
-   NODE_ENV             = production
+   PORT                   = 8080
+   NODE_ENV               = production
    ```
 6. Add a **PostgreSQL plugin** in Railway. Copy the `DATABASE_URL` it generates.
 7. After deploy, run the schema push once:
@@ -410,16 +418,18 @@ This is the simplest option. The frontend (static files) goes to Vercel/Netlify/
 5. Set **Output Directory** to `dist/public`
 6. Add environment variables:
    ```
-   VITE_CLERK_PUBLISHABLE_KEY = pk_live_xxx
-   BASE_PATH                  = /
+   VITE_API_URL = https://pilemetric-api.up.railway.app
+   BASE_PATH    = /
    ```
 7. Deploy. Note your Vercel domain, e.g. `https://pilemetric.vercel.app`
 
-### 8.3 Configure Clerk allowed origins
+### 8.3 Configure Google OAuth redirect URI
 
-In Clerk Dashboard → Settings → Allowed Origins, add:
-- `https://pilemetric.vercel.app`
-- `https://pilemetric-api.up.railway.app`
+In Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client ID:
+- Under **Authorized redirect URIs**, add:
+  `https://pilemetric-api.up.railway.app/api/auth/google/callback`
+- Under **Authorized JavaScript origins**, add:
+  `https://pilemetric.vercel.app`
 
 ### 8.4 Wire up the API base URL
 
@@ -511,7 +521,8 @@ pnpm install --frozen-lockfile
 # Create .env file
 cat > .env << 'EOF'
 DATABASE_URL=postgresql://pilemetric_user:your_secure_password@localhost:5432/pilemetric
-CLERK_SECRET_KEY=sk_live_xxx
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxx
 SESSION_SECRET=your-64-char-secret
 WEBODM_LIGHTNING_TOKEN=xxx
 PORT=8080
@@ -525,9 +536,7 @@ pnpm --filter @workspace/db run push
 NODE_ENV=production pnpm --filter @workspace/api-server run build
 
 # Build frontend
-BASE_PATH=/ \
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
-pnpm --filter @workspace/stockpile run build
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
 ```
 
 ### 9.5 Configure PM2
@@ -653,8 +662,7 @@ pnpm --filter @workspace/db run push
 
 # Rebuild
 NODE_ENV=production pnpm --filter @workspace/api-server run build
-BASE_PATH=/ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
-  pnpm --filter @workspace/stockpile run build
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
 
 # Restart API server (zero-downtime reload)
 pm2 reload pilemetric-api
@@ -728,11 +736,9 @@ COPY artifacts/stockpile/ ./artifacts/stockpile/
 
 RUN pnpm install --frozen-lockfile
 
-ARG VITE_CLERK_PUBLISHABLE_KEY
 ARG BASE_PATH=/
 
 RUN BASE_PATH=${BASE_PATH} \
-    VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY} \
     pnpm --filter @workspace/stockpile run build
 
 # ── Nginx runtime ─────────────────────────────────────────────
@@ -770,7 +776,6 @@ docker push ${REGISTRY}/pilemetric-api:latest
 # Frontend
 docker build \
   -f artifacts/stockpile/Dockerfile \
-  --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
   --build-arg BASE_PATH=/ \
   -t ${REGISTRY}/pilemetric-web:${TAG} \
   -t ${REGISTRY}/pilemetric-web:latest \
@@ -801,7 +806,8 @@ metadata:
 type: Opaque
 stringData:
   DATABASE_URL: "postgresql://pilemetric_user:password@postgres-service:5432/pilemetric"
-  CLERK_SECRET_KEY: "sk_live_xxx"
+  GOOGLE_CLIENT_ID: "xxx.apps.googleusercontent.com"
+  GOOGLE_CLIENT_SECRET: "GOCSPX-xxx"
   SESSION_SECRET: "your-64-char-random-string"
   WEBODM_LIGHTNING_TOKEN: "xxx"
 ```
@@ -840,11 +846,16 @@ spec:
                 secretKeyRef:
                   name: pilemetric-secrets
                   key: DATABASE_URL
-            - name: CLERK_SECRET_KEY
+            - name: GOOGLE_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: pilemetric-secrets
-                  key: CLERK_SECRET_KEY
+                  key: GOOGLE_CLIENT_ID
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pilemetric-secrets
+                  key: GOOGLE_CLIENT_SECRET
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
@@ -1110,7 +1121,8 @@ Still in the **Setup Node.js App** interface, scroll to **Environment Variables*
 | `PORT` | `3000` (Passenger uses this port internally — do not change) |
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | `postgresql://...neon.tech/pilemetric?sslmode=require` |
-| `CLERK_SECRET_KEY` | `sk_live_xxx` |
+| `GOOGLE_CLIENT_ID` | `xxx.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxx` |
 | `SESSION_SECRET` | (64-char random string) |
 | `WEBODM_LIGHTNING_TOKEN` | Your WebODM Lightning API token |
 
@@ -1142,7 +1154,6 @@ The frontend must be built with `VITE_API_URL` pointing to your API subdomain, b
 
 ```bash
 BASE_PATH=/ \
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
 VITE_API_URL=https://api.yourdomain.com/api \
 pnpm --filter @workspace/stockpile run build
 ```
@@ -1260,19 +1271,22 @@ If you get a 500 error, check the application log inside cPanel → **Setup Node
 
 ---
 
-### 11.11 Configure Clerk for the new domain
+### 11.11 Configure Google OAuth for the production domain
 
-1. Log in to https://clerk.com → Your Application → **Settings** → **Domains**
-2. Add your production domain: `yourdomain.com`
-3. Under **Allowed Origins** add:
-   - `https://yourdomain.com`
-   - `https://api.yourdomain.com`
-4. Clerk will verify domain ownership via DNS TXT record — follow the prompts
-5. After verification, update `CLERK_PUBLISHABLE_KEY` to the **production** key (`pk_live_...`)
-6. Rebuild and re-upload the frontend with the production key:
+1. Log in to https://console.cloud.google.com → APIs & Services → Credentials
+2. Open your OAuth 2.0 Client ID (Web application)
+3. Under **Authorized redirect URIs** add:
+   `https://api.yourdomain.com/api/auth/google/callback`
+4. Under **Authorized JavaScript origins** add:
+   `https://yourdomain.com`
+5. Set `GOOGLE_REDIRECT_URI` in cPanel Node.js App → Environment Variables:
+   ```
+   GOOGLE_REDIRECT_URI=https://api.yourdomain.com/api/auth/google/callback
+   FRONTEND_URL=https://yourdomain.com
+   ```
+6. Rebuild and re-upload the frontend:
    ```bash
    BASE_PATH=/ \
-   VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
    VITE_API_URL=https://api.yourdomain.com/api \
    pnpm --filter @workspace/stockpile run build
    ```
@@ -1286,7 +1300,7 @@ If you get a 500 error, check the application log inside cPanel → **Setup Node
 | Frontend loads | Open `https://yourdomain.com` — dashboard appears |
 | API responds | `curl https://api.yourdomain.com/api/healthz` → `{"status":"ok"}` |
 | Database connected | Admin login succeeds (returns JWT token) |
-| Clerk auth works | Click Sign In → Clerk modal appears → can log in with Google/email |
+| Google auth works | Click Sign In → Google consent screen appears → login completes → redirected to dashboard |
 | File upload works | Create a new job, upload 3+ photos → status changes to `queued` |
 | NodeODM connected | Job status progresses from `queued` → `running` → `completed` |
 | Volume calculated | After completion, draw polygon → volume appears in m³ |
@@ -1312,7 +1326,6 @@ NODE_ENV=production pnpm --filter @workspace/api-server run build
 ```bash
 # 1. Rebuild locally
 BASE_PATH=/ \
-VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
 VITE_API_URL=https://api.yourdomain.com/api \
 pnpm --filter @workspace/stockpile run build
 
@@ -1355,9 +1368,9 @@ curl -s https://your-domain.com/api/healthz
 ### 12.2 Authentication flow
 
 1. Open https://your-domain.com in a browser
-2. Click **Sign In** — Clerk sign-in modal should appear
-3. Sign in with Google or email/password
-4. After sign-in, the dashboard should load
+2. Click **Sign In** — you are redirected to the Google consent screen
+3. Sign in with your Google account
+4. After sign-in, you are redirected back to the dashboard
 
 For local-admin login test:
 ```bash
@@ -1414,8 +1427,8 @@ export PORT=8080
 
 ---
 
-**Symptom:** `Error: CLERK_SECRET_KEY is not set` or Clerk 401 errors
-**Fix:** Ensure `CLERK_SECRET_KEY` matches the key in your Clerk dashboard. Development and production keys are different (`sk_test_` vs `sk_live_`).
+**Symptom:** `Error: GOOGLE_CLIENT_ID is not set` or `invalid_client` errors from Google
+**Fix:** Ensure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in your environment. Verify that the redirect URI configured in Google Cloud Console exactly matches the `GOOGLE_REDIRECT_URI` env var (or the auto-detected value `<your-api-domain>/api/auth/google/callback`).
 
 ---
 
@@ -1454,7 +1467,7 @@ ls artifacts/stockpile/dist/public/index.html
 ```
 If missing, rebuild:
 ```bash
-BASE_PATH=/ VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx pnpm --filter @workspace/stockpile run build
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
 ```
 
 **Fix 2:** Nginx root path must point to `dist/public/`, not `dist/`:
@@ -1514,10 +1527,10 @@ Authorization: Bearer <admin-token>
 
 ---
 
-### Clerk "Unauthorized" on every request after deploy
+### Google OAuth "redirect_uri_mismatch" error
 
-**Symptom:** All authenticated API calls return 401 after deploying to a new domain
-**Fix:** Add the new domain to Clerk Dashboard → Allowed Origins. Also ensure `CLERK_PUBLISHABLE_KEY` in the frontend build matches `CLERK_SECRET_KEY` in the API server (they must be from the same Clerk application).
+**Symptom:** Google returns `redirect_uri_mismatch` after the user consents
+**Fix:** Open Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client ID. The URI under **Authorized redirect URIs** must exactly match the value the server sends. If you set `GOOGLE_REDIRECT_URI`, use that exact value. Otherwise, the server auto-detects it as `<request-origin>/api/auth/google/callback` — add that URL to the Google Console. Remember there is no trailing slash.
 
 ---
 
