@@ -33,16 +33,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { useUserProfile } from "@/context/UserProfileContext";
-import { getLocalAdminToken } from "@/lib/adminAuth";
+import { getActiveToken } from "@/lib/adminAuth";
 import type { UserRole, UserStatus, UserProfile } from "@/lib/adminAuth";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = getLocalAdminToken();
+  const token = getActiveToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
@@ -148,7 +147,6 @@ export default function AdminUsers() {
   });
   const [createSaving, setCreateSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -220,15 +218,10 @@ export default function AdminUsers() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    const user = users.find((u) => u.id === deleteId);
-    if (!user) return;
-    const nameToConfirm = user.displayName || user.email || user.id;
-    if (deleteConfirm !== nameToConfirm) return;
     try {
       await apiCall(`/admin/users/${deleteId}`, { method: "DELETE" });
       setUsers((prev) => prev.filter((u) => u.id !== deleteId));
       setDeleteId(null);
-      setDeleteConfirm("");
     } catch (e: any) {
       alert(e.message);
     }
@@ -255,7 +248,6 @@ export default function AdminUsers() {
   }
 
   const deleteUser = deleteId ? users.find((u) => u.id === deleteId) : null;
-  const nameToConfirm = deleteUser ? (deleteUser.displayName || deleteUser.email || deleteUser.id) : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -343,7 +335,7 @@ export default function AdminUsers() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => { setDeleteId(user.id); setDeleteConfirm(""); }}
+                            onClick={() => setDeleteId(user.id)}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -463,27 +455,29 @@ export default function AdminUsers() {
       </Dialog>
 
       {/* Delete Confirm Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) { setDeleteId(null); setDeleteConfirm(""); } }}>
+      <Dialog open={!!deleteId} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent className="dark bg-card border-border max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-mono uppercase tracking-wider text-sm text-destructive">Delete User</DialogTitle>
+            <DialogTitle className="font-mono uppercase tracking-wider text-sm text-destructive flex items-center gap-2">
+              <Trash2 className="h-4 w-4" />
+              Delete User
+            </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <p className="text-sm text-muted-foreground">
-              This action cannot be undone. Type <strong className="text-foreground font-mono">{nameToConfirm}</strong> to confirm.
+          <div className="flex flex-col gap-2 py-2">
+            <p className="text-sm text-foreground">
+              Are you sure you want to delete{" "}
+              <strong className="font-mono">
+                {deleteUser?.displayName || deleteUser?.email || deleteUser?.id}
+              </strong>
+              ?
             </p>
-            <Input
-              value={deleteConfirm}
-              onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder={nameToConfirm}
-              className="font-mono bg-input border-border"
-            />
+            <p className="text-xs text-muted-foreground">This action cannot be undone. All data associated with this user will be permanently removed.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDeleteId(null); setDeleteConfirm(""); }}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteConfirm !== nameToConfirm}>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              Delete User
             </Button>
           </DialogFooter>
         </DialogContent>
