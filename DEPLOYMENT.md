@@ -16,8 +16,9 @@
 8. [Deploy — Option A: Web Hosting (Vercel + Railway)](#8-deploy--option-a-web-hosting-vercel--railway)
 9. [Deploy — Option B: VM Instance (Ubuntu + Nginx + PM2)](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2)
 10. [Deploy — Option C: Kubernetes](#10-deploy--option-c-kubernetes)
-11. [Testing & Smoke Checks](#11-testing--smoke-checks)
-12. [Troubleshooting](#12-troubleshooting)
+11. [Deploy — Option D: Rumahweb cPanel Hosting](#11-deploy--option-d-rumahweb-cpanel-hosting)
+12. [Testing & Smoke Checks](#12-testing--smoke-checks)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
@@ -1021,16 +1022,337 @@ kubectl rollout status deployment/pilemetric-api -n pilemetric
 
 ---
 
-## 11. Testing & Smoke Checks
+## 11. Deploy — Option D: Rumahweb cPanel Hosting
 
-### 11.1 API health check
+Rumahweb adalah penyedia hosting Indonesia yang menggunakan cPanel. Panduan ini menggunakan Bahasa Inggris agar konsisten dengan seluruh dokumen, namun mencakup semua langkah yang berlaku khusus untuk lingkungan Rumahweb.
+
+### Important notes before you start
+
+| Constraint | Detail |
+|---|---|
+| **Node.js support** | Only available on **Business** plan or higher. Shared Starter/Personal plans do NOT support Node.js. Verify your plan at cPanel → Software → **Setup Node.js App**. |
+| **No PostgreSQL** | Rumahweb cPanel provides only MySQL. PileMetric requires PostgreSQL. You must use an **external** free PostgreSQL provider (Neon.tech is recommended). |
+| **Memory limit** | Shared hosting memory is typically 256–512 MB. GeoTIFF parsing peaks at ~800 MB RAM. If the API crashes on large files, you need a VPS instead. |
+| **Upload size** | Apache default is 128 MB. You must raise this in `.htaccess`. |
+| **API subdomain** | The API server runs on a subdomain (e.g. `api.yourdomain.com`) because cPanel Passenger apps are bound to a domain/subdomain, not a path. |
+
+### Architecture on Rumahweb
+
+```
+Browser
+  │
+  ├─── https://yourdomain.com/       → Apache → public_html/ (static frontend)
+  │
+  └─── https://api.yourdomain.com/api/  → Apache → Passenger → Node.js (API server)
+                                                         │
+                                              PostgreSQL on Neon.tech (external)
+```
+
+---
+
+### 11.1 Set up external PostgreSQL (Neon.tech)
+
+Neon provides a free PostgreSQL 16 database accessible from any host.
+
+1. Go to https://neon.tech → **Sign Up** (free)
+2. Click **New Project** → name it `pilemetric` → region: `Asia Pacific (Singapore)` (closest to Indonesian servers)
+3. After creation, copy the **Connection String** — it looks like:
+   ```
+   postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require
+   ```
+4. Save this as your `DATABASE_URL`
+
+**Push the schema from your local machine:**
+```bash
+DATABASE_URL="postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require" \
+  pnpm --filter @workspace/db run push
+```
+
+---
+
+### 11.2 Create a subdomain for the API in cPanel
+
+1. Log in to cPanel → **Domains** → **Subdomains**
+2. Create subdomain: `api`
+3. Domain: `yourdomain.com`
+4. Document Root: leave as `api.yourdomain.com` (cPanel sets this automatically)
+5. Click **Create**
+
+You now have `api.yourdomain.com` pointing to a folder inside your account.
+
+---
+
+### 11.3 Set up Node.js App in cPanel
+
+1. cPanel → **Software** → **Setup Node.js App**
+2. Click **Create Application**
+3. Fill in:
+
+   | Field | Value |
+   |---|---|
+   | Node.js version | 20.x (choose the highest 20.x available) |
+   | Application mode | Production |
+   | Application root | `api.yourdomain.com` (or any folder name — this is where code is stored) |
+   | Application URL | `api.yourdomain.com` |
+   | Application startup file | `dist/index.mjs` |
+
+4. Click **Create**
+5. cPanel shows you the **virtual environment path** and a button **Run NPM Install** — note both
+
+---
+
+### 11.4 Set environment variables in the Node.js App
+
+Still in the **Setup Node.js App** interface, scroll to **Environment Variables** and add each one:
+
+| Name | Value |
+|---|---|
+| `PORT` | `3000` (Passenger uses this port internally — do not change) |
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | `postgresql://...neon.tech/pilemetric?sslmode=require` |
+| `CLERK_SECRET_KEY` | `sk_live_xxx` |
+| `SESSION_SECRET` | (64-char random string) |
+| `WEBODM_LIGHTNING_TOKEN` | Your WebODM Lightning API token |
+
+Click **Save** after adding all variables.
+
+> **Generate a secure SESSION_SECRET:**
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
+
+---
+
+### 11.5 Build the project locally and prepare the API bundle
+
+On your **local machine** (not on the server), run:
+
+```bash
+# Build the API server
+NODE_ENV=production pnpm --filter @workspace/api-server run build
+```
+
+This produces `artifacts/api-server/dist/index.mjs` — a single bundled file with no `node_modules` needed.
+
+---
+
+### 11.6 Build the frontend locally
+
+The frontend must be built with `VITE_API_URL` pointing to your API subdomain, because on Rumahweb the frontend and API are on different domains:
+
+```bash
+BASE_PATH=/ \
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
+VITE_API_URL=https://api.yourdomain.com/api \
+pnpm --filter @workspace/stockpile run build
+```
+
+Output: `artifacts/stockpile/dist/public/` — ready to upload.
+
+---
+
+### 11.7 Upload the frontend via cPanel File Manager
+
+1. cPanel → **Files** → **File Manager**
+2. Navigate to `public_html/`
+3. Delete any default placeholder files (`index.html`, `cgi-bin/`, etc.)
+4. Click **Upload** → upload the entire contents of `artifacts/stockpile/dist/public/`
+
+   **Directory structure inside `public_html/` must look like:**
+   ```
+   public_html/
+   ├── index.html
+   ├── assets/
+   │   ├── index-xxxxx.js
+   │   └── index-xxxxx.css
+   └── favicon.ico
+   ```
+
+   > If you have many files, zip first: `cd artifacts/stockpile/dist/public && zip -r ../frontend.zip .` then upload and extract in File Manager.
+
+5. Create a `.htaccess` file in `public_html/` with this content:
+
+   ```apache
+   Options -Indexes
+
+   # SPA routing — send all non-file requests to index.html
+   <IfModule mod_rewrite.c>
+     RewriteEngine On
+     RewriteBase /
+     RewriteRule ^index\.html$ - [L]
+     RewriteCond %{REQUEST_FILENAME} !-f
+     RewriteCond %{REQUEST_FILENAME} !-d
+     RewriteRule . /index.html [L]
+   </IfModule>
+
+   # Increase upload size for photo batches
+   <IfModule mod_php.c>
+     php_value upload_max_filesize 500M
+     php_value post_max_size 500M
+   </IfModule>
+
+   LimitRequestBody 524288000
+
+   # Cache static assets
+   <IfModule mod_expires.c>
+     ExpiresActive On
+     ExpiresByType text/css "access plus 1 year"
+     ExpiresByType application/javascript "access plus 1 year"
+     ExpiresByType image/png "access plus 1 month"
+     ExpiresByType image/jpeg "access plus 1 month"
+   </IfModule>
+   ```
+
+---
+
+### 11.8 Upload the API server via cPanel File Manager
+
+1. cPanel → **File Manager**
+2. Navigate to the **Application root** folder you set in step 11.3 (e.g. `api.yourdomain.com/`)
+3. Upload the file `artifacts/api-server/dist/index.mjs`
+
+   Final structure:
+   ```
+   api.yourdomain.com/
+   └── dist/
+       └── index.mjs
+   ```
+
+4. Also create a `.htaccess` file in the `api.yourdomain.com/` root:
+
+   ```apache
+   # Increase body size for image batch uploads
+   LimitRequestBody 524288000
+
+   # Let Passenger handle everything
+   PassengerEnabled On
+   PassengerAppType node
+   PassengerStartupFile dist/index.mjs
+   ```
+
+---
+
+### 11.9 Start / restart the Node.js App
+
+1. cPanel → **Setup Node.js App**
+2. Find your app in the list
+3. Click **Restart** (or **Start** if it was never started)
+4. Wait 10–15 seconds, then click **Open** to verify the startup file path is correct
+
+Test the API is alive:
+```bash
+curl https://api.yourdomain.com/api/healthz
+# Expected: {"status":"ok"}
+```
+
+If you get a 500 error, check the application log inside cPanel → **Setup Node.js App** → view the error log link shown in the app row.
+
+---
+
+### 11.10 Enable SSL (HTTPS) for both domains
+
+1. cPanel → **Security** → **SSL/TLS Status**
+2. Both `yourdomain.com` and `api.yourdomain.com` should appear in the list
+3. Click **Run AutoSSL** — Rumahweb uses Let's Encrypt via AutoSSL at no cost
+4. Wait 2–5 minutes, then refresh — both domains should show a green padlock
+
+> If AutoSSL fails for `api.yourdomain.com`, go to cPanel → **SSL/TLS** → **Install and Manage SSL** and issue a certificate manually for that subdomain.
+
+---
+
+### 11.11 Configure Clerk for the new domain
+
+1. Log in to https://clerk.com → Your Application → **Settings** → **Domains**
+2. Add your production domain: `yourdomain.com`
+3. Under **Allowed Origins** add:
+   - `https://yourdomain.com`
+   - `https://api.yourdomain.com`
+4. Clerk will verify domain ownership via DNS TXT record — follow the prompts
+5. After verification, update `CLERK_PUBLISHABLE_KEY` to the **production** key (`pk_live_...`)
+6. Rebuild and re-upload the frontend with the production key:
+   ```bash
+   BASE_PATH=/ \
+   VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
+   VITE_API_URL=https://api.yourdomain.com/api \
+   pnpm --filter @workspace/stockpile run build
+   ```
+
+---
+
+### 11.12 End-to-end deployment checklist
+
+| Step | How to verify |
+|---|---|
+| Frontend loads | Open `https://yourdomain.com` — dashboard appears |
+| API responds | `curl https://api.yourdomain.com/api/healthz` → `{"status":"ok"}` |
+| Database connected | Admin login succeeds (returns JWT token) |
+| Clerk auth works | Click Sign In → Clerk modal appears → can log in with Google/email |
+| File upload works | Create a new job, upload 3+ photos → status changes to `queued` |
+| NodeODM connected | Job status progresses from `queued` → `running` → `completed` |
+| Volume calculated | After completion, draw polygon → volume appears in m³ |
+
+---
+
+### 11.13 Updating the deployment
+
+Every time you push new code to GitHub, deploy manually:
+
+**Update the API:**
+```bash
+# 1. Rebuild locally
+NODE_ENV=production pnpm --filter @workspace/api-server run build
+
+# 2. Upload artifacts/api-server/dist/index.mjs via cPanel File Manager
+#    (overwrite the existing file in api.yourdomain.com/dist/)
+
+# 3. Restart the Node.js App in cPanel → Setup Node.js App → Restart
+```
+
+**Update the frontend:**
+```bash
+# 1. Rebuild locally
+BASE_PATH=/ \
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx \
+VITE_API_URL=https://api.yourdomain.com/api \
+pnpm --filter @workspace/stockpile run build
+
+# 2. Upload contents of artifacts/stockpile/dist/public/ to public_html/
+#    (overwrite all files — keep the .htaccess you created)
+```
+
+**Schema changes:**
+```bash
+DATABASE_URL="postgresql://...neon.tech/pilemetric?sslmode=require" \
+  pnpm --filter @workspace/db run push
+```
+
+---
+
+### 11.14 FTP upload alternative (optional)
+
+If File Manager is slow for large uploads, use an FTP client:
+
+1. cPanel → **FTP Accounts** → Create a dedicated FTP account
+2. Use [FileZilla](https://filezilla-project.org/) (free):
+   - Host: `ftp.yourdomain.com`
+   - Username: the FTP account you created
+   - Password: as set
+   - Port: `21`
+3. Upload `public_html/` contents from `artifacts/stockpile/dist/public/`
+4. Upload `dist/index.mjs` to `api.yourdomain.com/dist/`
+
+---
+
+## 12. Testing & Smoke Checks
+
+### 12.1 API health check
 
 ```bash
 curl -s https://your-domain.com/api/healthz
 # Expected: {"status":"ok"}
 ```
 
-### 11.2 Authentication flow
+### 12.2 Authentication flow
 
 1. Open https://your-domain.com in a browser
 2. Click **Sign In** — Clerk sign-in modal should appear
@@ -1045,7 +1367,7 @@ curl -s -X POST https://your-domain.com/api/admin/auth/login \
 # Expected: {"token":"eyJ...","profile":{"id":"...","role":"super_admin"}}
 ```
 
-### 11.3 Database connectivity
+### 12.3 Database connectivity
 
 ```bash
 curl -s -X POST https://your-domain.com/api/admin/auth/login \
@@ -1055,7 +1377,7 @@ curl -s -X POST https://your-domain.com/api/admin/auth/login \
 # Expected: [] or a JSON array of jobs — confirms DB connectivity
 ```
 
-### 11.4 WebODM token check
+### 12.4 WebODM token check
 
 Log in to the app as super_admin → Settings → WebODM Settings. The token status should show green. Or test directly:
 
@@ -1064,7 +1386,7 @@ curl -s "https://spark1.webodm.net/api/projects/1/?token=YOUR_TOKEN"
 # Expected: JSON with project data (not 401)
 ```
 
-### 11.5 Image upload test
+### 12.5 Image upload test
 
 1. Log in to the app
 2. Click **New Job**
@@ -1076,7 +1398,7 @@ curl -s "https://spark1.webodm.net/api/projects/1/?token=YOUR_TOKEN"
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### API server does not start
 
@@ -1196,3 +1518,86 @@ Authorization: Bearer <admin-token>
 
 **Symptom:** All authenticated API calls return 401 after deploying to a new domain
 **Fix:** Add the new domain to Clerk Dashboard → Allowed Origins. Also ensure `CLERK_PUBLISHABLE_KEY` in the frontend build matches `CLERK_SECRET_KEY` in the API server (they must be from the same Clerk application).
+
+---
+
+### Rumahweb — "Setup Node.js App" not visible in cPanel
+
+**Symptom:** cPanel Software section does not show "Setup Node.js App"
+**Cause:** Your current plan does not include Node.js support
+**Fix:** Upgrade to Rumahweb **Business** hosting or higher. Alternatively, use Rumahweb **VPS** and follow the [VM Instance guide](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2) instead.
+
+---
+
+### Rumahweb — API returns 503 or "Application Error"
+
+**Symptom:** `https://api.yourdomain.com/api/healthz` returns 503 Service Unavailable or a cPanel error page
+**Cause 1:** The Node.js app is not started.
+**Fix:** cPanel → Setup Node.js App → click **Restart**.
+
+**Cause 2:** `dist/index.mjs` is missing or in the wrong folder.
+**Fix:** Confirm the file exists at `api.yourdomain.com/dist/index.mjs` inside File Manager. The startup file configured in cPanel must match exactly.
+
+**Cause 3:** A required environment variable is missing (e.g. `DATABASE_URL`).
+**Fix:** cPanel → Setup Node.js App → edit the app → check all environment variables are set → Save → Restart.
+
+---
+
+### Rumahweb — Database connection refused from Neon
+
+**Symptom:** API starts but crashes with `connection refused` or `SSL required`
+**Cause:** Neon requires SSL. The `sslmode=require` parameter must be in the connection string.
+**Fix:** Ensure `DATABASE_URL` ends with `?sslmode=require`:
+```
+postgresql://user:pass@ep-xxx.neon.tech/pilemetric?sslmode=require
+```
+
+---
+
+### Rumahweb — Frontend shows blank page after upload
+
+**Symptom:** `https://yourdomain.com` shows a blank white page
+**Cause 1:** `index.html` is not in `public_html/` directly — it may be in a subfolder.
+**Fix:** In File Manager, confirm `public_html/index.html` exists. If files are inside `public_html/dist/`, move them up one level.
+
+**Cause 2:** Missing `.htaccess` for SPA routing — refreshing any page other than `/` gives 404.
+**Fix:** Create the `.htaccess` file from [step 11.7](#117-upload-the-frontend-via-cpanel-file-manager) in `public_html/`.
+
+---
+
+### Rumahweb — Image uploads fail with 413 Request Entity Too Large
+
+**Symptom:** Uploading photos returns error 413
+**Fix:** The `LimitRequestBody` line in `.htaccess` must be present:
+```apache
+LimitRequestBody 524288000
+```
+Also check cPanel → **Select PHP Version** → PHP options → ensure `upload_max_filesize` and `post_max_size` are set to `500M`.
+
+---
+
+### Rumahweb — API crashes on large GeoTIFF files (out of memory)
+
+**Symptom:** Volume calculation works for small jobs but crashes for large ones; cPanel error log shows `JavaScript heap out of memory`
+**Cause:** Shared hosting RAM is too low for large DSM files.
+**Fix options:**
+1. Upgrade to Rumahweb VPS (minimum 4 GB RAM recommended)
+2. Or use the Node.js app startup file with increased heap:
+   - Change startup file to a wrapper script `start.sh` with:
+     ```bash
+     #!/bin/bash
+     node --max-old-space-size=2048 --enable-source-maps dist/index.mjs
+     ```
+   - Make it executable and set it as the Passenger startup file
+
+---
+
+### Rumahweb — CORS error in browser console
+
+**Symptom:** Browser shows `Access to fetch at 'https://api.yourdomain.com' from origin 'https://yourdomain.com' has been blocked by CORS policy`
+**Cause:** The API server CORS config does not include your production frontend domain.
+**Fix:** In cPanel → Setup Node.js App, add the environment variable:
+```
+ALLOWED_ORIGINS=https://yourdomain.com
+```
+Then restart the app. (The API server reads this to configure its CORS allowed origins.)
