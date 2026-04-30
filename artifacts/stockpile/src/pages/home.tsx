@@ -8,7 +8,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-primary/30">
       {/* Admin access — fixed top-right, always visible */}
       <a
-        href={`${basePath}/admin-login`}
+        href={`${basePath}/sign-in?admin=1`}
         className="fixed top-4 right-4 z-50 inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors border border-border/50 hover:border-primary/50 rounded px-3 py-1.5 bg-background/90 backdrop-blur shadow-sm"
       >
         <ShieldCheck className="h-3 w-3" />
