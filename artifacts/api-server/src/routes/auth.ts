@@ -7,14 +7,37 @@ import { log } from "../lib/activityLog";
 
 const router: Router = Router();
 
+/**
+ * Best-effort public origin detection.
+ * Priority: REPLIT_DOMAINS env var (most reliable in Replit) →
+ *           x-forwarded-host header → host header.
+ * Always returns https:// for known public domains.
+ */
+function derivePublicOrigin(req: Request): string {
+  // 1. REPLIT_DOMAINS is set by the platform and is always the real public host.
+  const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (replitDomain) return `https://${replitDomain}`;
+
+  // 2. x-forwarded-proto + x-forwarded-host (standard reverse-proxy headers)
+  const fwdProto = (req.headers["x-forwarded-proto"] as string | undefined)
+    ?.split(",")[0]?.trim();
+  const fwdHost = (req.headers["x-forwarded-host"] as string | undefined)
+    ?.split(",")[0]?.trim();
+  if (fwdProto && fwdHost) return `${fwdProto}://${fwdHost}`;
+
+  // 3. FRONTEND_URL env var (explicit override)
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, "");
+
+  // 4. Fallback: local host with detected protocol
+  const proto = fwdProto ?? req.protocol ?? "http";
+  const host = req.headers.host ?? "localhost";
+  return `${proto}://${host}`;
+}
+
 function getOAuthClient(req: Request): OAuth2Client {
   const redirectUri =
     process.env.GOOGLE_REDIRECT_URI ??
-    (() => {
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? req.protocol;
-      const host = req.headers.host ?? "localhost";
-      return `${proto}://${host}/api/auth/google/callback`;
-    })();
+    `${derivePublicOrigin(req)}/api/auth/google/callback`;
   return new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -24,9 +47,7 @@ function getOAuthClient(req: Request): OAuth2Client {
 
 function getFrontendBase(req: Request): string {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, "");
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? req.protocol;
-  const host = req.headers.host ?? "localhost";
-  return `${proto}://${host}`;
+  return derivePublicOrigin(req);
 }
 
 function nameFromEmail(email: string): string {
@@ -45,6 +66,8 @@ router.get("/google", (req: Request, res: Response) => {
     return;
   }
   const client = getOAuthClient(req);
+  const detectedUri = process.env.GOOGLE_REDIRECT_URI ?? `${derivePublicOrigin(req)}/api/auth/google/callback`;
+  req.log.info({ redirectUri: detectedUri }, "Google OAuth redirect_uri");
   const url = client.generateAuthUrl({
     access_type: "offline",
     scope: ["openid", "email", "profile"],
