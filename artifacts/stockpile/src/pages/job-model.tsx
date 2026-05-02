@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetJob } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import {
   Box,
   Loader2,
   AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 import { getActiveToken } from "@/lib/adminAuth";
 
@@ -21,47 +20,41 @@ export default function JobModel() {
 
   const { data: job, isLoading } = useGetJob(id);
 
-  const [iframeState, setIframeState] = useState<"loading" | "loaded" | "blocked" | "error">("loading");
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const viewerSrc = `${API_BASE}/jobs/${id}/model3d`;
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [fetchState, setFetchState] = useState<"loading" | "ready" | "error">("loading");
+  const [iframeBlocked, setIframeBlocked] = useState(false);
 
   useEffect(() => {
-    setIframeState("loading");
-    loadTimerRef.current = setTimeout(() => {
-      setIframeState("blocked");
-    }, 8000);
-    return () => {
-      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    };
-  }, [id]);
+    if (!job || job.status !== "completed" || !job.webodmTaskId) return;
 
-  const handleIframeLoad = () => {
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    try {
-      const doc = iframeRef.current?.contentDocument;
-      if (doc && doc.body && doc.body.innerHTML.length < 50) {
-        setIframeState("blocked");
-        return;
-      }
-    } catch {
-      // cross-origin — can't read, assume it loaded OK
-    }
-    setIframeState("loaded");
-  };
+    setFetchState("loading");
+    setViewerUrl(null);
+    setIframeBlocked(false);
 
-  const handleIframeError = () => {
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    setIframeState("error");
-  };
+    const token = getActiveToken();
+    fetch(`${API_BASE}/jobs/${id}/model3d`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<{ url: string }>;
+      })
+      .then(({ url }) => {
+        setViewerUrl(url);
+        setFetchState("ready");
+      })
+      .catch(() => setFetchState("error"));
+  }, [id, job?.status, job?.webodmTaskId]);
+
+  // Detect if iframe gets blocked (X-Frame-Options / CSP) after a timeout
+  useEffect(() => {
+    if (!viewerUrl) return;
+    const timer = setTimeout(() => setIframeBlocked(true), 8000);
+    return () => clearTimeout(timer);
+  }, [viewerUrl]);
 
   const openInNewTab = () => {
-    const token = getActiveToken();
-    const url = token
-      ? `${viewerSrc}?auth=${encodeURIComponent(token)}`
-      : viewerSrc;
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (viewerUrl) window.open(viewerUrl, "_blank", "noopener,noreferrer");
   };
 
   if (isLoading || !job) {
@@ -99,31 +92,17 @@ export default function JobModel() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(iframeState === "blocked" || iframeState === "error") && (
+          {viewerUrl && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="font-mono uppercase text-xs"
-              onClick={() => {
-                setIframeState("loading");
-                if (iframeRef.current) {
-                  iframeRef.current.src = viewerSrc;
-                }
-              }}
+              onClick={openInNewTab}
             >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Retry
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              Open in WebODM
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="font-mono uppercase text-xs"
-            onClick={openInNewTab}
-          >
-            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-            Open in WebODM
-          </Button>
         </div>
       </div>
 
@@ -152,68 +131,73 @@ export default function JobModel() {
               Back to Job
             </Button>
           </div>
+        ) : fetchState === "loading" ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 z-10 gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Loading 3D Model…
+            </p>
+          </div>
+        ) : fetchState === "error" ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-8">
+            <AlertCircle className="h-12 w-12 text-destructive opacity-60" />
+            <div className="text-center max-w-sm">
+              <p className="font-mono uppercase text-sm font-bold">Failed to Load Viewer</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Could not retrieve the 3D viewer URL. The WebODM task may no longer be available.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="font-mono uppercase text-xs"
+              onClick={() => setLocation(`/jobs/${id}`)}>
+              <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
+              Back to Job
+            </Button>
+          </div>
+        ) : iframeBlocked ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-10 gap-5 p-8">
+            <div className="rounded-full bg-primary/10 p-4">
+              <Box className="h-10 w-10 text-primary" />
+            </div>
+            <div className="text-center max-w-sm">
+              <p className="font-mono uppercase text-sm font-bold text-foreground">
+                Open in New Tab
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                The WebODM 3D viewer cannot be embedded due to browser security restrictions.
+                Open it in a new tab for the full interactive experience.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="default"
+                size="sm"
+                className="font-mono uppercase text-xs"
+                onClick={openInNewTab}
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Open 3D Viewer
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="font-mono uppercase text-xs"
+                onClick={() => setLocation(`/jobs/${id}`)}
+              >
+                <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
+                Back to Job
+              </Button>
+            </div>
+          </div>
         ) : (
-          <>
-            {/* Loading overlay */}
-            {iframeState === "loading" && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 z-10 gap-4">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                  Loading 3D Model…
-                </p>
-              </div>
-            )}
-
-            {/* Blocked / error fallback */}
-            {(iframeState === "blocked" || iframeState === "error") && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-10 gap-5 p-8">
-                <div className="rounded-full bg-primary/10 p-4">
-                  <Box className="h-10 w-10 text-primary" />
-                </div>
-                <div className="text-center max-w-sm">
-                  <p className="font-mono uppercase text-sm font-bold text-foreground">
-                    Viewer Loaded Externally
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    The WebODM 3D viewer cannot be embedded in this frame due to browser
-                    security restrictions. Open it in a new tab for the full experience.
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="font-mono uppercase text-xs"
-                    onClick={openInNewTab}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                    Open 3D Viewer
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="font-mono uppercase text-xs"
-                    onClick={() => setLocation(`/jobs/${id}`)}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
-                    Back to Job
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* The viewer iframe */}
-            <iframe
-              ref={iframeRef}
-              src={viewerSrc}
-              title="3D Model Viewer"
-              className="absolute inset-0 w-full h-full border-0"
-              onLoad={handleIframeLoad}
-              onError={handleIframeError}
-              allow="fullscreen"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-            />
-          </>
+          <iframe
+            key={viewerUrl}
+            src={viewerUrl!}
+            title="3D Model Viewer"
+            className="absolute inset-0 w-full h-full border-0"
+            onLoad={() => setIframeBlocked(false)}
+            allow="fullscreen"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+          />
         )}
       </div>
     </div>

@@ -596,9 +596,11 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/jobs/:id/model3d — redirect to WebODM Potree 3D model viewer
+// GET /api/jobs/:id/model3d — return WebODM Potree 3D viewer URL as JSON
+// The client fetches this with an auth header then sets the iframe src directly
+// (iframes cannot send custom headers, so a redirect would always hit 401).
 // ---------------------------------------------------------------------------
-router.get("/:id/model3d", async (req: AuthedRequest, res) => {
+router.get("/:id/model3d", requireUser, async (req: AuthedRequest, res) => {
   const { id } = req.params;
   const [row] = await db
     .select()
@@ -616,7 +618,7 @@ router.get("/:id/model3d", async (req: AuthedRequest, res) => {
     res.status(503).json({ error: "WebODM not configured" });
     return;
   }
-  res.redirect(302, url);
+  res.json({ url });
 });
 
 // ---------------------------------------------------------------------------
