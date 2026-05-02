@@ -25,6 +25,7 @@ import {
   calculateVolumeFromBuffers,
   fetchDsmDtmBuffers,
   fetchOrthophotoJpeg,
+  getViewerUrl,
 } from "../lib/webodm";
 import multer from "multer";
 import {
@@ -588,6 +589,30 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
   res.setHeader("Content-Type", tile.contentType);
   res.setHeader("Cache-Control", "public, max-age=86400");
   res.end(tile.buffer);
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/jobs/:id/model3d — redirect to WebODM Potree 3D model viewer
+// ---------------------------------------------------------------------------
+router.get("/:id/model3d", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(jobByIdCondition(id, req))
+    .limit(1);
+
+  if (!row) { res.status(404).json({ error: "Job not found" }); return; }
+  if (row.status !== "completed" || !row.webodmTaskId) {
+    res.status(400).json({ error: "3D model not yet available — job must be completed" });
+    return;
+  }
+  const url = getViewerUrl(row.webodmTaskId);
+  if (!url) {
+    res.status(503).json({ error: "WebODM not configured" });
+    return;
+  }
+  res.redirect(302, url);
 });
 
 // ---------------------------------------------------------------------------

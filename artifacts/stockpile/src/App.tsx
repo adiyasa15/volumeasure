@@ -17,6 +17,7 @@ import Dashboard from "@/pages/dashboard";
 import Jobs from "@/pages/jobs";
 import NewJob from "@/pages/new-job";
 import JobDetail from "@/pages/job-detail";
+import JobModel from "@/pages/job-model";
 import PendingApproval from "@/pages/pending-approval";
 import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
@@ -62,6 +63,7 @@ function ProtectedRoutes() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/jobs" component={Jobs} />
           <Route path="/jobs/new" component={NewJob} />
+          <Route path="/jobs/:id/model" component={JobModel} />
           <Route path="/jobs/:id" component={JobDetail} />
           <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/settings" component={AdminSettings} />

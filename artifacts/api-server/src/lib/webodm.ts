@@ -328,6 +328,16 @@ export async function fetchOrthophotoTile(
 }
 
 /**
+ * Return the WebODM Lightning 3D Potree viewer URL for a task.
+ * Returns null when no token is configured.
+ */
+export function getViewerUrl(uuid: string): string | null {
+  const t = token();
+  if (!t) return null;
+  return `${NODE_BASE}/3d/model/${uuid}?token=${encodeURIComponent(t)}`;
+}
+
+/**
  * Build the direct NodeODM URL for the orthophoto GeoTIFF asset.
  * Used to proxy/stream the file through our server so the token stays server-side.
  */

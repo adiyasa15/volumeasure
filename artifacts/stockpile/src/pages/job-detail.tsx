@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2, FileDown, Pencil } from "lucide-react";
+import { Mountain, Ruler, RefreshCw, Trash2, Calendar, Camera, Pickaxe, MapPin, Target, AlertCircle, CheckCircle2, ChevronLeft, Image as ImageIcon, Map as MapIcon, Loader2, FileDown, Pencil, Box } from "lucide-react";
 import { generateJobReport } from "@/lib/report";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -221,6 +221,17 @@ export default function JobDetail() {
           >
             <Pencil className="mr-2 h-3.5 w-3.5" /> Edit
           </Button>
+
+          {isCompleted && job.webodmTaskId && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="font-mono uppercase text-xs"
+              onClick={() => setLocation(`/jobs/${id}/model`)}
+            >
+              <Box className="mr-2 h-3.5 w-3.5" /> 3D Model
+            </Button>
+          )}
 
           {isCompleted && (
             <Button
