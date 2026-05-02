@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { Job } from "@workspace/api-client-react";
+import { getActiveToken } from "./adminAuth";
 
 function formatBytes(bytes?: number | null): string {
   if (bytes == null) return "—";
@@ -98,8 +99,9 @@ function renderPolygon(coords: number[][] | null | undefined): string | null {
  */
 async function fetchOrthophotoDataUrl(jobId: string): Promise<string | null> {
   try {
+    const token = getActiveToken();
     const res = await fetch(`/api/jobs/${jobId}/orthophoto-jpeg`, {
-      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) return null;
 

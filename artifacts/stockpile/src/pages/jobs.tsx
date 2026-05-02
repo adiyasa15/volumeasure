@@ -1,4 +1,5 @@
 import { useListJobs, useDeleteJob, getListJobsQueryKey } from "@workspace/api-client-react";
+import { getActiveToken } from "@/lib/adminAuth";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,10 +93,10 @@ export default function Jobs() {
 
   const handleSaveName = async (name: string) => {
     if (!editTarget) return;
+    const token = getActiveToken();
     await fetch(`/api/jobs/${editTarget.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ name }),
     });
     queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });

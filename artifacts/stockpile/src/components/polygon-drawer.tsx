@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getActiveToken } from "@/lib/adminAuth";
 import {
   Dialog,
   DialogContent,
@@ -106,7 +107,10 @@ function FitOnOpen({
     const timer = setTimeout(async () => {
       map.invalidateSize();
       try {
-        const res = await fetch(`/api/jobs/${jobId}/tilejson`, { credentials: "include" });
+        const token = getActiveToken();
+        const res = await fetch(`/api/jobs/${jobId}/tilejson`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!res.ok) return;
         const data = (await res.json()) as { bounds?: [number, number, number, number] };
         if (!data?.bounds) return;
@@ -208,10 +212,10 @@ export function PolygonDrawer({
 
     setIsCalculating(true);
     try {
+      const token = getActiveToken();
       const res = await fetch(`/api/jobs/${jobId}/polygon`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ polygonCoordinates: coords }),
       });
       if (!res.ok) throw new Error("API error");

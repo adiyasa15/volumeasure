@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { processImageFile, ImageProcessResult } from "@/lib/image-processing";
 import { Progress } from "@/components/ui/progress";
+import { getActiveToken } from "@/lib/adminAuth";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -212,14 +213,18 @@ export default function NewJob() {
         setUploadPhase("uploading");
         setUploadProgress(0);
 
+        const authHeader: Record<string, string> = {};
+        const authToken = getActiveToken();
+        if (authToken) authHeader["Authorization"] = `Bearer ${authToken}`;
+
         for (let i = 0; i < acceptedImages.length; i++) {
           const img = acceptedImages[i];
           const fd = new FormData();
           fd.append("images", img.file, img.file.name);
           await fetch(`/api/jobs/${job.id}/images`, {
             method: "POST",
+            headers: authHeader,
             body: fd,
-            credentials: "include",
           });
           setUploadProgress(Math.round(((i + 1) / acceptedImages.length) * 100));
         }
@@ -228,7 +233,7 @@ export default function NewJob() {
         setUploadPhase("committing");
         await fetch(`/api/jobs/${job.id}/commit`, {
           method: "POST",
-          credentials: "include",
+          headers: authHeader,
         });
       }
 

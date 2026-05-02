@@ -14,6 +14,7 @@ import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { useQueryClient } from "@tanstack/react-query";
+import { getActiveToken } from "@/lib/adminAuth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -153,10 +154,10 @@ export default function JobDetail() {
   };
 
   const handleSaveNameDetail = async (name: string) => {
+    const token = getActiveToken();
     await fetch(`/api/jobs/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ name }),
     });
     queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) });
