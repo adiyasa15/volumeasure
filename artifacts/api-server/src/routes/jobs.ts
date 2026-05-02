@@ -412,7 +412,11 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
   if (row.webodmTaskId) {
     // Real NodeODM task — poll for status
     const task = await getTask(row.webodmTaskId);
-    if (task) {
+    if (!task) {
+      // Task no longer exists on WebODM (purged or never committed) — mark failed
+      // so it doesn't remain stuck in "queued" forever.
+      nextStatus = "failed";
+    } else {
       // NodeODM returns status as { code: number }
       const statusCode = task.status?.code ?? null;
       nextStatus = statusFromCode(statusCode);
