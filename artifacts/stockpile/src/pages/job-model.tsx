@@ -1,13 +1,16 @@
-import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetJob } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
   ChevronLeft,
-  ExternalLink,
-  Box,
+  Download,
+  FileArchive,
+  Layers,
+  Map,
+  BarChart3,
   Loader2,
   AlertCircle,
+  Box,
 } from "lucide-react";
 import { getActiveToken } from "@/lib/adminAuth";
 
@@ -20,41 +23,22 @@ export default function JobModel() {
 
   const { data: job, isLoading } = useGetJob(id);
 
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [fetchState, setFetchState] = useState<"loading" | "ready" | "error">("loading");
-  const [iframeBlocked, setIframeBlocked] = useState(false);
-
-  useEffect(() => {
-    if (!job || job.status !== "completed" || !job.webodmTaskId) return;
-
-    setFetchState("loading");
-    setViewerUrl(null);
-    setIframeBlocked(false);
-
+  const handleDownload = () => {
     const token = getActiveToken();
-    fetch(`${API_BASE}/jobs/${id}/model3d`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<{ url: string }>;
-      })
-      .then(({ url }) => {
-        setViewerUrl(url);
-        setFetchState("ready");
-      })
-      .catch(() => setFetchState("error"));
-  }, [id, job?.status, job?.webodmTaskId]);
-
-  // Detect if iframe gets blocked (X-Frame-Options / CSP) after a timeout
-  useEffect(() => {
-    if (!viewerUrl) return;
-    const timer = setTimeout(() => setIframeBlocked(true), 8000);
-    return () => clearTimeout(timer);
-  }, [viewerUrl]);
-
-  const openInNewTab = () => {
-    if (viewerUrl) window.open(viewerUrl, "_blank", "noopener,noreferrer");
+    const a = document.createElement("a");
+    a.href = `${API_BASE}/jobs/${id}/download`;
+    if (token) {
+      a.href = `${API_BASE}/jobs/${id}/download`;
+      fetch(a.href, { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" })
+        .then((r) => {
+          if (r.ok && r.url) window.location.href = r.url;
+        })
+        .catch(() => {
+          window.open(a.href, "_blank");
+        });
+    } else {
+      window.open(a.href, "_blank");
+    }
   };
 
   if (isLoading || !job) {
@@ -81,123 +65,93 @@ export default function JobModel() {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Box className="h-4 w-4 text-primary" />
+          <FileArchive className="h-4 w-4 text-primary" />
           <div>
             <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              3D Model
+              Processing Results
             </p>
             <p className="font-mono font-bold text-sm leading-tight truncate max-w-xs">
               {job.name}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {viewerUrl && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="font-mono uppercase text-xs"
-              onClick={openInNewTab}
-            >
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Open in WebODM
-            </Button>
-          )}
-        </div>
       </div>
 
-      {/* Main viewer area */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto flex items-center justify-center p-8">
         {!isCompleted || !hasTask ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4 p-8">
+          <div className="flex flex-col items-center text-muted-foreground gap-4 max-w-sm text-center">
             <AlertCircle className="h-12 w-12 opacity-30" />
-            <div className="text-center">
-              <p className="font-mono uppercase text-sm font-bold">
-                3D Model Not Available
-              </p>
-              <p className="text-sm mt-2 max-w-sm text-center">
-                {!isCompleted
-                  ? "The job must finish processing before the 3D model is available."
-                  : "This job was not processed via WebODM and has no 3D model asset."}
-              </p>
+            <p className="font-mono uppercase text-sm font-bold">Results Not Available</p>
+            <p className="text-sm">
+              {!isCompleted
+                ? "The job must finish processing before results are available."
+                : "This job was not processed via WebODM and has no output files."}
+            </p>
+            <Button variant="outline" size="sm" className="font-mono uppercase text-xs"
+              onClick={() => setLocation(`/jobs/${id}`)}>
+              <ChevronLeft className="h-3.5 w-3.5 mr-1.5" /> Back to Job
+            </Button>
+          </div>
+        ) : (
+          <div className="w-full max-w-lg flex flex-col gap-6">
+            {/* Hero download card */}
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-6 flex flex-col items-center gap-4 text-center">
+              <div className="rounded-full bg-primary/10 p-4">
+                <Box className="h-10 w-10 text-primary" />
+              </div>
+              <div>
+                <p className="font-mono font-bold text-lg uppercase tracking-wide">
+                  Full Results Package
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Download the complete output archive for use in GIS software,
+                  point cloud viewers, or CAD tools.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="font-mono uppercase text-sm w-full"
+                onClick={handleDownload}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download all.zip
+              </Button>
             </div>
+
+            {/* What's inside */}
+            <div className="rounded-xl border border-border/50 bg-card/40 p-5">
+              <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-4">
+                Package Contents
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { icon: Layers, label: "Point Cloud", desc: "LAZ / EPT tiles" },
+                  { icon: Map, label: "Orthophoto", desc: "GeoTIFF (COG)" },
+                  { icon: BarChart3, label: "DSM / DTM", desc: "Elevation rasters" },
+                  { icon: Box, label: "3D Model", desc: "GLTF textured mesh" },
+                ].map(({ icon: Icon, label, desc }) => (
+                  <div key={label} className="flex items-start gap-3 rounded-lg bg-background/50 border border-border/30 p-3">
+                    <Icon className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-mono text-xs font-bold uppercase">{label}</p>
+                      <p className="text-xs text-muted-foreground">{desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="font-mono uppercase text-xs"
+              className="font-mono uppercase text-xs self-start"
               onClick={() => setLocation(`/jobs/${id}`)}
             >
               <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
               Back to Job
             </Button>
           </div>
-        ) : fetchState === "loading" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 z-10 gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Loading 3D Model…
-            </p>
-          </div>
-        ) : fetchState === "error" ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-8">
-            <AlertCircle className="h-12 w-12 text-destructive opacity-60" />
-            <div className="text-center max-w-sm">
-              <p className="font-mono uppercase text-sm font-bold">Failed to Load Viewer</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Could not retrieve the 3D viewer URL. The WebODM task may no longer be available.
-              </p>
-            </div>
-            <Button variant="outline" size="sm" className="font-mono uppercase text-xs"
-              onClick={() => setLocation(`/jobs/${id}`)}>
-              <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
-              Back to Job
-            </Button>
-          </div>
-        ) : iframeBlocked ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/95 z-10 gap-5 p-8">
-            <div className="rounded-full bg-primary/10 p-4">
-              <Box className="h-10 w-10 text-primary" />
-            </div>
-            <div className="text-center max-w-sm">
-              <p className="font-mono uppercase text-sm font-bold text-foreground">
-                Open in New Tab
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                The WebODM 3D viewer cannot be embedded due to browser security restrictions.
-                Open it in a new tab for the full interactive experience.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="default"
-                size="sm"
-                className="font-mono uppercase text-xs"
-                onClick={openInNewTab}
-              >
-                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                Open 3D Viewer
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="font-mono uppercase text-xs"
-                onClick={() => setLocation(`/jobs/${id}`)}
-              >
-                <ChevronLeft className="h-3.5 w-3.5 mr-1.5" />
-                Back to Job
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <iframe
-            key={viewerUrl}
-            src={viewerUrl!}
-            title="3D Model Viewer"
-            className="absolute inset-0 w-full h-full border-0"
-            onLoad={() => setIframeBlocked(false)}
-            allow="fullscreen"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-          />
         )}
       </div>
     </div>

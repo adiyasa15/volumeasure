@@ -596,11 +596,10 @@ router.get("/:id/tiles/:z/:x/:y", async (req: AuthedRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/jobs/:id/model3d — return WebODM Potree 3D viewer URL as JSON
-// The client fetches this with an auth header then sets the iframe src directly
-// (iframes cannot send custom headers, so a redirect would always hit 401).
+// GET /api/jobs/:id/download — proxy redirect to NodeODM all.zip download.
+// Keeps the WebODM token server-side; client just follows the redirect.
 // ---------------------------------------------------------------------------
-router.get("/:id/model3d", requireUser, async (req: AuthedRequest, res) => {
+router.get("/:id/download", requireUser, async (req: AuthedRequest, res) => {
   const { id } = req.params;
   const [row] = await db
     .select()
@@ -610,15 +609,13 @@ router.get("/:id/model3d", requireUser, async (req: AuthedRequest, res) => {
 
   if (!row) { res.status(404).json({ error: "Job not found" }); return; }
   if (row.status !== "completed" || !row.webodmTaskId) {
-    res.status(400).json({ error: "3D model not yet available — job must be completed" });
+    res.status(400).json({ error: "Results not yet available — job must be completed" });
     return;
   }
-  const url = getViewerUrl(row.webodmTaskId);
-  if (!url) {
-    res.status(503).json({ error: "WebODM not configured" });
-    return;
-  }
-  res.json({ url });
+  const t = process.env.WEBODM_LIGHTNING_TOKEN;
+  if (!t) { res.status(503).json({ error: "WebODM not configured" }); return; }
+  const downloadUrl = `https://spark1.webodm.net/task/${row.webodmTaskId}/download/all.zip?token=${encodeURIComponent(t)}`;
+  res.redirect(302, downloadUrl);
 });
 
 // ---------------------------------------------------------------------------
