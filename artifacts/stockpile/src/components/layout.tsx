@@ -5,29 +5,31 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { getActiveToken } from "@/lib/adminAuth";
-
-const baseNavItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/jobs", label: "Measurements", icon: FolderOpen },
-  { href: "/jobs/new", label: "New Job", icon: Plus },
-  { href: "/tools/exif", label: "EXIF Extractor", icon: ScanSearch },
-];
-
-const adminNavItem = { href: "/admin/users", label: "User Management", icon: Users };
-const settingsNavItem = { href: "/admin/settings", label: "Settings", icon: Settings };
+import { LanguageToggle } from "@/components/language-toggle";
+import { useTranslation } from "react-i18next";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { profile, isLocalAdmin, logout } = useUserProfile();
+  const { t } = useTranslation();
 
   const isAuthenticated = Boolean(getActiveToken());
   const isAdmin = profile?.role === "super_admin" || profile?.role === "admin";
   const isReadOnly = profile?.role === "readonly";
 
+  const baseNavItems = [
+    { href: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard },
+    { href: "/jobs", label: t("nav.measurements"), icon: FolderOpen },
+    { href: "/jobs/new", label: t("nav.newJob"), icon: Plus },
+    { href: "/tools/exif", label: t("nav.exifExtractor"), icon: ScanSearch },
+  ];
+
+  const adminNavItem = { href: "/admin/users", label: t("nav.userManagement"), icon: Users };
+  const settingsNavItem = { href: "/admin/settings", label: t("nav.settings"), icon: Settings };
+
   const navItems = [
     ...baseNavItems.filter((item) => {
-      // readonly cannot create new jobs
       if (isReadOnly && item.href === "/jobs/new") return false;
       return true;
     }),
@@ -76,7 +78,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="md:hidden">
                   <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle menu</span>
+                  <span className="sr-only">{t("nav.toggleMenu")}</span>
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[240px] sm:w-[280px]">
@@ -104,13 +106,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
             {isAuthenticated ? (
               <div className="flex items-center gap-4">
                 {profile && isAdmin && (
                   <span className="hidden sm:flex items-center gap-1 text-xs font-mono uppercase text-primary/80 tracking-wider">
                     <ShieldCheck className="h-3 w-3" />
-                    {profile.role === "super_admin" ? "Super Admin" : "Admin"}
+                    {profile.role === "super_admin" ? t("nav.superAdmin") : t("nav.admin")}
                   </span>
                 )}
                 <div className="flex items-center gap-2">
@@ -122,7 +125,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     size="sm"
                     onClick={logout}
                     className="text-muted-foreground hover:text-foreground"
-                    title="Sign out"
+                    title={t("common.signOut")}
                   >
                     <LogOut className="h-4 w-4" />
                   </Button>
@@ -130,7 +133,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             ) : (
               <a href="/sign-in">
-                <Button size="sm">Sign In</Button>
+                <Button size="sm">{t("common.signIn")}</Button>
               </a>
             )}
           </div>

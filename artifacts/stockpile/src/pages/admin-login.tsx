@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setLocalAdminToken } from "@/lib/adminAuth";
+import { useTranslation } from "react-i18next";
+import { LanguageToggle } from "@/components/language-toggle";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -14,6 +16,7 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,14 +30,14 @@ export default function AdminLogin() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Login failed");
+        setError(data.error ?? t("adminLogin.signIn") + " failed");
         return;
       }
       setLocalAdminToken(data.token);
       setLocation("/dashboard");
       window.location.reload();
     } catch {
-      setError("Network error — check server connectivity");
+      setError(t("adminLogin.networkError"));
     } finally {
       setLoading(false);
     }
@@ -43,16 +46,21 @@ export default function AdminLogin() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background dark px-4 relative">
       <div className="absolute inset-0 z-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgNDBoNDBNNDAgMHY0MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDIpIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+')] pointer-events-none" />
+
+      <div className="absolute top-4 right-4 z-50">
+        <LanguageToggle />
+      </div>
+
       <div className="relative z-10 w-full max-w-[420px]">
         <div className="rounded border border-border bg-card/80 p-8 shadow-2xl">
           <div className="mb-8 flex flex-col items-center gap-3">
             <Mountain className="h-10 w-10 text-primary" />
             <div className="text-center">
               <h1 className="font-mono text-xl font-bold uppercase tracking-wider text-foreground">
-                PileMetric
+                {t("adminLogin.title")}
               </h1>
               <p className="mt-1 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                Administrative Access
+                {t("adminLogin.subtitle")}
               </p>
             </div>
           </div>
@@ -60,7 +68,7 @@ export default function AdminLogin() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
               <Label htmlFor="username" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Username or Email
+                {t("adminLogin.usernameLabel")}
               </Label>
               <Input
                 id="username"
@@ -75,7 +83,7 @@ export default function AdminLogin() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="password" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Password
+                {t("adminLogin.passwordLabel")}
               </Label>
               <Input
                 id="password"
@@ -101,7 +109,7 @@ export default function AdminLogin() {
               disabled={loading}
             >
               <Lock className="mr-2 h-4 w-4" />
-              {loading ? "Authenticating…" : "Sign In"}
+              {loading ? t("adminLogin.authenticating") : t("adminLogin.signIn")}
             </Button>
           </form>
         </div>

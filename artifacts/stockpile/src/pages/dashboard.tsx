@@ -5,6 +5,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 function formatDuration(seconds?: number | null): string {
   if (seconds == null) return "—";
@@ -17,17 +18,18 @@ function formatDuration(seconds?: number | null): string {
 export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: recentActivity, isLoading: isLoadingActivity } = useGetRecentActivity();
+  const { t } = useTranslation();
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">Overview</h1>
-          <p className="text-muted-foreground">Stockpile volumetric measurement metrics.</p>
+          <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">{t("dashboard.title")}</h1>
+          <p className="text-muted-foreground">{t("dashboard.subtitle")}</p>
         </div>
         <Link href="/jobs/new">
           <Button className="font-mono uppercase">
-            <Plus className="mr-2 h-4 w-4" /> New Measurement
+            <Plus className="mr-2 h-4 w-4" /> {t("dashboard.newMeasurement")}
           </Button>
         </Link>
       </div>
@@ -35,52 +37,44 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Total Jobs</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.totalJobs")}</CardTitle>
             <Box className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-16" /> : (
               <div className="text-3xl font-bold">{summary?.totalJobs || 0}</div>
             )}
           </CardContent>
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Total Volume</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.totalVolume")}</CardTitle>
             <Mountain className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-24" /> : (
               <div className="text-3xl font-bold">{summary?.totalVolumeM3?.toLocaleString() || 0} <span className="text-lg text-muted-foreground font-normal">m³</span></div>
             )}
           </CardContent>
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Active Processing</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.activeProcessing")}</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-16" /> : (
               <div className="text-3xl font-bold text-primary">{summary?.activeJobs || 0}</div>
             )}
           </CardContent>
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Completed</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.completed")}</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-16" /> : (
               <div className="text-3xl font-bold">{summary?.completedJobs || 0}</div>
             )}
           </CardContent>
@@ -90,39 +84,33 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Photos Processed</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.photosProcessed")}</CardTitle>
             <ImageIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-16" /> : (
               <div className="text-3xl font-bold font-mono">{(summary?.totalImages ?? 0).toLocaleString()}</div>
             )}
           </CardContent>
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Avg Processing</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.avgProcessing")}</CardTitle>
             <Timer className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-24" /> : (
               <div className="text-3xl font-bold font-mono">{formatDuration(summary?.averageProcessingDurationSeconds)}</div>
             )}
           </CardContent>
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Avg Volume</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.avgVolume")}</CardTitle>
             <Ruler className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-24" /> : (
               <div className="text-3xl font-bold font-mono">
                 {summary?.averageVolumeM3 != null ? summary.averageVolumeM3.toLocaleString() : "—"}
                 <span className="text-lg text-muted-foreground font-normal"> m³</span>
@@ -132,13 +120,11 @@ export default function Dashboard() {
         </Card>
         <Card className="bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">Material Types</CardTitle>
+            <CardTitle className="text-sm font-medium font-mono uppercase text-muted-foreground">{t("dashboard.materialTypes")}</CardTitle>
             <Pickaxe className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isLoadingSummary ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
+            {isLoadingSummary ? <Skeleton className="h-8 w-16" /> : (
               <div className="text-3xl font-bold font-mono">{summary?.byMaterial?.length ?? 0}</div>
             )}
           </CardContent>
@@ -148,8 +134,8 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="lg:col-span-4 bg-card/50">
           <CardHeader>
-            <CardTitle className="font-mono uppercase text-sm">Material Breakdown</CardTitle>
-            <CardDescription>Volume distribution by material type.</CardDescription>
+            <CardTitle className="font-mono uppercase text-sm">{t("dashboard.materialBreakdown")}</CardTitle>
+            <CardDescription>{t("dashboard.materialBreakdownDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingSummary ? (
@@ -161,7 +147,7 @@ export default function Dashboard() {
             ) : summary?.byMaterial?.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <Pickaxe className="h-8 w-8 mb-4 opacity-50" />
-                <p>No material data available.</p>
+                <p>{t("dashboard.noMaterials")}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -170,11 +156,9 @@ export default function Dashboard() {
                     <div className="w-16 font-mono text-sm uppercase">{mat.materialType}</div>
                     <div className="flex-1 px-4">
                       <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary" 
-                          style={{ 
-                            width: `${Math.max(5, (mat.totalVolumeM3 / (summary.totalVolumeM3 || 1)) * 100)}%` 
-                          }} 
+                        <div
+                          className="h-full bg-primary"
+                          style={{ width: `${Math.max(5, (mat.totalVolumeM3 / (summary.totalVolumeM3 || 1)) * 100)}%` }}
                         />
                       </div>
                     </div>
@@ -190,8 +174,8 @@ export default function Dashboard() {
 
         <Card className="lg:col-span-3 bg-card/50">
           <CardHeader>
-            <CardTitle className="font-mono uppercase text-sm">Recent Activity</CardTitle>
-            <CardDescription>Latest measurement jobs.</CardDescription>
+            <CardTitle className="font-mono uppercase text-sm">{t("dashboard.recentActivity")}</CardTitle>
+            <CardDescription>{t("dashboard.recentActivityDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingActivity ? (
@@ -203,7 +187,7 @@ export default function Dashboard() {
             ) : recentActivity?.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <Activity className="h-8 w-8 mb-4 opacity-50" />
-                <p>No recent activity.</p>
+                <p>{t("dashboard.noActivity")}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -235,10 +219,10 @@ export default function Dashboard() {
                           ) : activity.status === 'running' || activity.status === 'queued' ? (
                             <span className="flex items-center text-xs text-primary font-mono uppercase">
                               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                              Processing
+                              {t("dashboard.processing")}
                             </span>
                           ) : activity.status === 'failed' ? (
-                            <span className="text-xs text-destructive font-mono uppercase">Failed</span>
+                            <span className="text-xs text-destructive font-mono uppercase">{t("dashboard.failed")}</span>
                           ) : (
                             <span className="text-xs text-muted-foreground font-mono uppercase">{activity.status}</span>
                           )}

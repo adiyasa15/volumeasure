@@ -31,6 +31,7 @@ import { generateJobReport } from "@/lib/report";
 import { useState, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 type EditTarget = {
   id: string;
@@ -45,21 +46,16 @@ export default function Jobs() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profile, isLocalAdmin } = useUserProfile();
+  const { t } = useTranslation();
   const isElevated = profile?.role === "super_admin" || profile?.role === "admin";
   const isReadOnly = profile?.role === "readonly";
 
-  // Returns true if the current user can edit/delete the given job:
-  //  - super_admin / admin  → any job
-  //  - local admin          → any job
-  //  - user                 → only their own jobs
-  //  - readonly             → never
   const canMutateJob = (job: NonNullable<typeof jobs>[number]) => {
     if (isReadOnly) return false;
     if (isElevated || isLocalAdmin) return true;
     return (job as any).ownerId === profile?.clerkUserId;
   };
 
-  // All non-readonly users now see all jobs; show owner column for everyone
   const showOwnerCol = true;
 
   const [search, setSearch] = useState("");
@@ -75,11 +71,11 @@ export default function Jobs() {
     try {
       await generateJobReport(job);
     } catch {
-      toast({ title: "Report failed", description: "Could not generate the PDF report.", variant: "destructive" });
+      toast({ title: t("jobs.reportFailed"), description: t("jobs.reportFailedDesc"), variant: "destructive" });
     } finally {
       setDownloadingId(null);
     }
-  }, [downloadingId, toast]);
+  }, [downloadingId, toast, t]);
 
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
@@ -112,9 +108,9 @@ export default function Jobs() {
     try {
       await deleteJob.mutateAsync({ id: deleteTarget.id });
       queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      toast({ title: "Job deleted", description: `"${deleteTarget.name}" has been removed.` });
+      toast({ title: t("jobs.jobDeleted"), description: t("jobs.jobDeletedDesc", { name: deleteTarget.name }) });
     } catch {
-      toast({ title: "Delete failed", description: "Could not delete the job. Please try again.", variant: "destructive" });
+      toast({ title: t("jobs.deleteFailed"), description: t("jobs.deleteFailedDesc"), variant: "destructive" });
     } finally {
       setDeleteTarget(null);
     }
@@ -124,17 +120,17 @@ export default function Jobs() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">Measurements</h1>
-          <p className="text-muted-foreground">All stockpile volumetric analysis jobs.</p>
+          <h1 className="text-3xl font-bold tracking-tight font-mono uppercase">{t("jobs.title")}</h1>
+          <p className="text-muted-foreground">{t("jobs.subtitle")}</p>
         </div>
         {isReadOnly ? (
           <Button className="font-mono uppercase" disabled title="Read-only access — contact an admin to create measurements">
-            <Plus className="mr-2 h-4 w-4" /> New Measurement
+            <Plus className="mr-2 h-4 w-4" /> {t("jobs.newMeasurement")}
           </Button>
         ) : (
           <Link href="/jobs/new">
             <Button className="font-mono uppercase">
-              <Plus className="mr-2 h-4 w-4" /> New Measurement
+              <Plus className="mr-2 h-4 w-4" /> {t("jobs.newMeasurement")}
             </Button>
           </Link>
         )}
@@ -145,7 +141,7 @@ export default function Jobs() {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search jobs..."
+              placeholder={t("jobs.searchPlaceholder")}
               className="pl-8 bg-background/50 font-mono text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -153,25 +149,25 @@ export default function Jobs() {
           </div>
           <Select value={materialFilter} onValueChange={setMaterialFilter}>
             <SelectTrigger className="w-full sm:w-[180px] bg-background/50 font-mono text-sm uppercase">
-              <SelectValue placeholder="Material" />
+              <SelectValue placeholder={t("jobs.allMaterials")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Materials</SelectItem>
-              <SelectItem value="sand">Sand</SelectItem>
-              <SelectItem value="soil">Soil</SelectItem>
-              <SelectItem value="coal">Coal</SelectItem>
+              <SelectItem value="all">{t("jobs.allMaterials")}</SelectItem>
+              <SelectItem value="sand">{t("jobs.sand")}</SelectItem>
+              <SelectItem value="soil">{t("jobs.soil")}</SelectItem>
+              <SelectItem value="coal">{t("jobs.coal")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full sm:w-[180px] bg-background/50 font-mono text-sm uppercase">
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder={t("jobs.allStatuses")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="queued">Queued</SelectItem>
-              <SelectItem value="running">Running</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="all">{t("jobs.allStatuses")}</SelectItem>
+              <SelectItem value="queued">{t("common.queued")}</SelectItem>
+              <SelectItem value="running">{t("common.running")}</SelectItem>
+              <SelectItem value="completed">{t("common.completed")}</SelectItem>
+              <SelectItem value="failed">{t("common.failed")}</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -185,15 +181,13 @@ export default function Jobs() {
         ) : filteredJobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <Layers className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-            <h3 className="text-lg font-bold font-mono uppercase mb-1">No jobs found</h3>
+            <h3 className="text-lg font-bold font-mono uppercase mb-1">{t("jobs.noJobsFound")}</h3>
             <p className="text-muted-foreground max-w-sm">
-              {jobs?.length === 0
-                ? "You haven't created any measurement jobs yet."
-                : "No jobs match your current search filters."}
+              {jobs?.length === 0 ? t("jobs.noJobsYet") : t("jobs.noJobsFilter")}
             </p>
             {jobs?.length === 0 && !isReadOnly && (
               <Link href="/jobs/new" className="mt-4">
-                <Button variant="outline" className="font-mono uppercase">Create Job</Button>
+                <Button variant="outline" className="font-mono uppercase">{t("jobs.createJob")}</Button>
               </Link>
             )}
           </div>
@@ -202,15 +196,15 @@ export default function Jobs() {
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="font-mono uppercase text-xs">Name</TableHead>
-                  <TableHead className="font-mono uppercase text-xs">Material</TableHead>
-                  <TableHead className="font-mono uppercase text-xs">Status</TableHead>
-                  <TableHead className="font-mono uppercase text-xs text-right">Volume (m³)</TableHead>
+                  <TableHead className="font-mono uppercase text-xs">{t("jobs.colName")}</TableHead>
+                  <TableHead className="font-mono uppercase text-xs">{t("jobs.colMaterial")}</TableHead>
+                  <TableHead className="font-mono uppercase text-xs">{t("jobs.colStatus")}</TableHead>
+                  <TableHead className="font-mono uppercase text-xs text-right">{t("jobs.colVolume")}</TableHead>
                   {showOwnerCol && (
-                    <TableHead className="font-mono uppercase text-xs">Owner</TableHead>
+                    <TableHead className="font-mono uppercase text-xs">{t("jobs.colOwner")}</TableHead>
                   )}
-                  <TableHead className="font-mono uppercase text-xs text-right">Created</TableHead>
-                  <TableHead className="font-mono uppercase text-xs text-center w-[90px]">Report</TableHead>
+                  <TableHead className="font-mono uppercase text-xs text-right">{t("jobs.colCreated")}</TableHead>
+                  <TableHead className="font-mono uppercase text-xs text-center w-[90px]">{t("jobs.colReport")}</TableHead>
                   <TableHead className="w-[48px]" />
                 </TableRow>
               </TableHeader>
@@ -230,16 +224,16 @@ export default function Jobs() {
                     <TableCell>
                       {job.status === 'completed' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono uppercase bg-primary/20 text-primary border border-primary/30">
-                          {job.status}
+                          {t("common.completed")}
                         </span>
                       ) : job.status === 'running' || job.status === 'queued' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono uppercase bg-blue-500/20 text-blue-400 border border-blue-500/30">
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          {job.status}
+                          {job.status === 'running' ? t("common.running") : t("common.queued")}
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono uppercase bg-destructive/20 text-destructive border border-destructive/30">
-                          {job.status}
+                          {t("common.failed")}
                         </span>
                       )}
                     </TableCell>
@@ -258,14 +252,13 @@ export default function Jobs() {
                       {format(new Date(job.createdAt), 'MMM d, yyyy')}
                     </TableCell>
 
-                    {/* ── PDF Report download ── */}
                     <TableCell className="text-center p-2">
                       {job.status === "completed" ? (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
-                          title="Download PDF report"
+                          title={t("jobs.downloadReport")}
                           disabled={downloadingId === job.id}
                           onClick={(e) => { e.stopPropagation(); void handleDownloadReport(job); }}
                         >
@@ -278,7 +271,7 @@ export default function Jobs() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground/30 cursor-not-allowed"
-                          title={`Report available once job is completed (currently ${job.status})`}
+                          title={t("jobs.reportAvailable", { status: job.status })}
                           disabled
                         >
                           <FileDown className="h-4 w-4" />
@@ -286,7 +279,6 @@ export default function Jobs() {
                       )}
                     </TableCell>
 
-                    {/* ── Actions menu: only for jobs the current user can mutate ── */}
                     <TableCell className="text-right p-2">
                       {canMutateJob(job) && (
                         <DropdownMenu>
@@ -314,14 +306,14 @@ export default function Jobs() {
                                 })
                               }
                             >
-                              <Pencil className="h-3.5 w-3.5" /> Edit
+                              <Pencil className="h-3.5 w-3.5" /> {t("common.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
                               onSelect={() => setDeleteTarget({ id: job.id, name: job.name })}
                             >
-                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                              <Trash2 className="h-3.5 w-3.5" /> {t("common.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -335,7 +327,6 @@ export default function Jobs() {
         )}
       </Card>
 
-      {/* ── Edit dialog ── */}
       {editTarget && (
         <PolygonDrawer
           open={!!editTarget}
@@ -350,19 +341,16 @@ export default function Jobs() {
         />
       )}
 
-      {/* ── Delete confirmation dialog ── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
         <AlertDialogContent className="border-border/50 bg-background">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-mono uppercase">Delete Measurement?</AlertDialogTitle>
+            <AlertDialogTitle className="font-mono uppercase">{t("jobs.deleteMeasurement")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete{" "}
-              <span className="font-semibold text-foreground">"{deleteTarget?.name}"</span> and all
-              associated imagery and measurements. This cannot be undone.
+              {t("jobs.deleteDesc", { name: deleteTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono uppercase">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="font-mono uppercase">{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-mono uppercase"
               onClick={handleConfirmDelete}
@@ -373,7 +361,7 @@ export default function Jobs() {
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
               )}
-              Delete
+              {t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
