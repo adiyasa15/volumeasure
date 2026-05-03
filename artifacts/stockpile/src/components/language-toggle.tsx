@@ -6,11 +6,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Languages } from "lucide-react";
 
 const LANGUAGES = [
-  { code: "en", label: "English", short: "EN" },
-  { code: "id", label: "Bahasa Indonesia", short: "ID" },
+  { code: "en", label: "English", flag: "🇺🇸" },
+  { code: "id", label: "Bahasa Indonesia", flag: "🇮🇩" },
 ];
 
 export function LanguageToggle() {
@@ -23,23 +22,22 @@ export function LanguageToggle() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 font-mono text-xs uppercase text-muted-foreground hover:text-foreground px-2"
+          className="h-8 gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground px-2"
           title="Change language"
         >
-          <Languages className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{current.short}</span>
+          <span className="text-base leading-none">{current.flag}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="font-mono text-xs w-40">
+      <DropdownMenuContent align="end" className="font-mono text-xs w-44">
         {LANGUAGES.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
             onClick={() => i18n.changeLanguage(lang.code)}
-            className={`gap-2 cursor-pointer uppercase ${
+            className={`gap-2.5 cursor-pointer ${
               i18n.language === lang.code ? "text-primary font-bold" : ""
             }`}
           >
-            <span className="w-6 text-center opacity-60">{lang.short}</span>
+            <span className="text-base leading-none">{lang.flag}</span>
             {lang.label}
           </DropdownMenuItem>
         ))}
