@@ -6,11 +6,13 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed-superadmin": "tsx ./src/seed-superadmin.ts",
+    "generate-manual": "tsx ./src/generate-manual.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
     "bcryptjs": "^3.0.3",
+    "docx": "^9.6.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "catalog:",
     "pg": "^8.20.0"

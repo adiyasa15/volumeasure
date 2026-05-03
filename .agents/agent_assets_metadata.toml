@@ -11,3 +11,9 @@ id = "d6sjl5O1_dRbJb9GdpUBY"
 uri = "file://DEPLOYMENT.md"
 type = "text"
 title = "PileMetric — Deployment Guide (with Rumahweb cPanel)"
+
+[[outputs]]
+id = "zPcJQODVdAEDlnWvU13b2"
+uri = "file://PileMetric-Panduan-Pengguna.docx"
+type = "word_document"
+title = "PileMetric – Panduan Pengguna (Bahasa Indonesia)"
