@@ -9,14 +9,18 @@
 1. [Architecture Overview](#1-architecture-overview)
 2. [Prerequisites](#2-prerequisites)
 3. [Clone & Local Development](#3-clone--local-development)
-4. [Environment Variables](#4-environment-variables)
+4. [Environment Variables — Referensi Lengkap](#4-environment-variables)
 5. [Database Setup](#5-database-setup)
 6. [Build for Production](#6-build-for-production)
 7. [Push to GitHub](#7-push-to-github)
 8. [Deploy — Option A: Web Hosting (Vercel + Railway)](#8-deploy--option-a-web-hosting-vercel--railway)
-9. [Deploy — Option B: VM Instance (Ubuntu + Nginx + PM2)](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2)
-10. [Deploy — Option C: Kubernetes](#10-deploy--option-c-kubernetes)
+9. [Deploy — Option B: VM / VPS Linux (Debian/Ubuntu + Nginx + Autostart)](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2)
+   - [9.5 File .env untuk VM/VPS](#95-create-the-env-file)
+   - [9.6 Autostart: systemd (Disarankan) atau PM2](#96-autostart-saat-booting--pilih-salah-satu-metode)
+10. [Deploy — Option C: Docker / Kubernetes](#10-deploy--option-c-kubernetes)
+    - [10.0 File .env untuk Docker](#100-file-env-untuk-docker--kubernetes)
 11. [Deploy — Option D: Rumahweb cPanel Hosting](#11-deploy--option-d-rumahweb-cpanel-hosting)
+    - [11.4 File .env untuk Rumahweb](#114-file-env-untuk-rumahweb)
 12. [Testing & Smoke Checks](#12-testing--smoke-checks)
 13. [Troubleshooting](#13-troubleshooting)
 
@@ -539,7 +543,127 @@ NODE_ENV=production pnpm --filter @workspace/api-server run build
 BASE_PATH=/ pnpm --filter @workspace/stockpile run build
 ```
 
-### 9.5 Configure PM2
+### 9.5 Create the .env file
+
+Create `.env` at the project root before starting the server:
+
+```bash
+nano /var/www/pilemetric/.env
+```
+
+Paste and fill in all values:
+
+```env
+# ── Database ────────────────────────────────────────────────────
+DATABASE_URL=postgresql://pilemetric_user:your_secure_password@localhost:5432/pilemetric
+
+# ── Google OAuth 2.0 ────────────────────────────────────────────
+# From: https://console.cloud.google.com → APIs & Services → Credentials
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
+FRONTEND_URL=https://yourdomain.com
+
+# ── Auth / Session ──────────────────────────────────────────────
+# Generate with: openssl rand -hex 32
+SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
+
+# ── WebODM Lightning ────────────────────────────────────────────
+WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# ── Server ──────────────────────────────────────────────────────
+PORT=8080
+NODE_ENV=production
+LOG_LEVEL=info
+```
+
+Protect the file (it contains secrets):
+
+```bash
+chmod 600 /var/www/pilemetric/.env
+```
+
+---
+
+### 9.6 Autostart saat Booting — Pilih salah satu metode
+
+Terdapat dua pilihan untuk menjalankan API server secara otomatis saat server Debian/Ubuntu dinyalakan:
+
+---
+
+#### Metode A: systemd (Disarankan untuk Debian/Ubuntu)
+
+systemd adalah sistem init bawaan Debian/Ubuntu. Ini adalah cara paling andal untuk autostart tanpa dependensi tambahan.
+
+```bash
+sudo nano /etc/systemd/system/pilemetric-api.service
+```
+
+Paste konten berikut (sesuaikan `User` dan `WorkingDirectory`):
+
+```ini
+[Unit]
+Description=PileMetric API Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/pilemetric
+ExecStart=/usr/bin/pnpm --filter @workspace/api-server run start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Membaca semua variabel dari file .env secara otomatis
+EnvironmentFile=/var/www/pilemetric/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> **Cek lokasi pnpm** jika `ExecStart` gagal:
+> ```bash
+> which pnpm
+> # contoh output: /usr/local/bin/pnpm → sesuaikan di ExecStart
+> ```
+
+Aktifkan dan jalankan service:
+
+```bash
+# Reload systemd agar mengenali service baru
+sudo systemctl daemon-reload
+
+# Aktifkan autostart saat booting
+sudo systemctl enable pilemetric-api
+
+# Jalankan sekarang
+sudo systemctl start pilemetric-api
+
+# Cek status
+sudo systemctl status pilemetric-api
+```
+
+Perintah berguna sehari-hari:
+
+```bash
+# Lihat log real-time
+sudo journalctl -u pilemetric-api -f
+
+# Restart setelah update kode
+sudo systemctl restart pilemetric-api
+
+# Nonaktifkan autostart
+sudo systemctl disable pilemetric-api
+```
+
+---
+
+#### Metode B: PM2 (Node.js Process Manager)
+
+PM2 menawarkan fitur tambahan seperti monitoring, log rotation, dan cluster mode.
 
 Create `ecosystem.config.cjs` at the project root:
 
@@ -577,11 +701,11 @@ pm2 save
 
 # Auto-start PM2 on boot
 pm2 startup
-# Run the command that pm2 outputs, e.g.:
+# Jalankan perintah yang di-output oleh pm2, contoh:
 # sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu
 ```
 
-### 9.6 Configure Nginx
+### 9.7 Configure Nginx
 
 ```bash
 sudo nano /etc/nginx/sites-available/pilemetric
@@ -638,7 +762,7 @@ sudo nginx -t               # test config
 sudo systemctl reload nginx
 ```
 
-### 9.7 Enable HTTPS with Let's Encrypt
+### 9.8 Enable HTTPS with Let's Encrypt
 
 ```bash
 sudo apt-get install -y certbot python3-certbot-nginx
@@ -646,7 +770,7 @@ sudo certbot --nginx -d your-domain.com -d www.your-domain.com
 # Follow prompts — certbot auto-renews via cron
 ```
 
-### 9.8 Deploy updates
+### 9.9 Deploy updates
 
 ```bash
 cd /var/www/pilemetric
@@ -671,6 +795,48 @@ pm2 reload pilemetric-api
 ---
 
 ## 10. Deploy — Option C: Kubernetes
+
+### 10.0 File .env untuk Docker / Kubernetes
+
+Buat file `.env` di root project. File ini digunakan oleh `docker-compose` dan juga bisa dimount ke container:
+
+```env
+# ── Database ─────────────────────────────────────────────────────
+# Gunakan nama service docker-compose sebagai host (bukan localhost)
+DATABASE_URL=postgresql://pilemetric_user:your_db_password@db:5432/pilemetric
+
+# ── Google OAuth 2.0 ─────────────────────────────────────────────
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
+FRONTEND_URL=https://yourdomain.com
+
+# ── Auth / Session ────────────────────────────────────────────────
+# Generate: openssl rand -hex 32
+SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
+
+# ── WebODM Lightning ─────────────────────────────────────────────
+WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# ── Server ───────────────────────────────────────────────────────
+PORT=8080
+NODE_ENV=production
+LOG_LEVEL=info
+
+# ── Docker Compose (password database untuk service db) ──────────
+POSTGRES_PASSWORD=your_db_password
+```
+
+> **Penting:** `DATABASE_URL` menggunakan `@db:5432` (nama service docker-compose), bukan `@localhost:5432`.
+
+Proteksi file:
+```bash
+chmod 600 .env
+```
+
+Untuk Kubernetes, variabel disimpan sebagai **Secret**, bukan file `.env` — lihat step 10.5.
+
+---
 
 ### 10.1 Prerequisites
 
@@ -1112,9 +1278,39 @@ You now have `api.yourdomain.com` pointing to a folder inside your account.
 
 ---
 
-### 11.4 Set environment variables in the Node.js App
+### 11.4 File .env untuk Rumahweb
 
-Still in the **Setup Node.js App** interface, scroll to **Environment Variables** and add each one:
+Karena Rumahweb cPanel **tidak membaca file `.env`** secara otomatis, semua variabel harus dimasukkan melalui antarmuka **Setup Node.js App** di cPanel.
+
+Berikut adalah nilai lengkap semua variabel yang dibutuhkan:
+
+```env
+# ── Database (gunakan Neon.tech — PostgreSQL eksternal) ──────────
+DATABASE_URL=postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require
+
+# ── Google OAuth 2.0 ─────────────────────────────────────────────
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# URL callback harus mengarah ke subdomain API Anda
+GOOGLE_REDIRECT_URI=https://api.yourdomain.com/api/auth/google/callback
+FRONTEND_URL=https://yourdomain.com
+
+# ── Auth / Session ────────────────────────────────────────────────
+# Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
+
+# ── WebODM Lightning ─────────────────────────────────────────────
+WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# ── Server ───────────────────────────────────────────────────────
+PORT=3000
+NODE_ENV=production
+LOG_LEVEL=info
+```
+
+> **Catatan PORT:** Di Rumahweb cPanel Passenger, gunakan `PORT=3000`. Passenger meneruskan traffic dari subdomain `api.yourdomain.com` ke port ini secara internal.
+
+Cara memasukkan ke cPanel — masih di antarmuka **Setup Node.js App**, scroll ke **Environment Variables** dan tambahkan satu per satu:
 
 | Name | Value |
 |---|---|
@@ -1123,15 +1319,13 @@ Still in the **Setup Node.js App** interface, scroll to **Environment Variables*
 | `DATABASE_URL` | `postgresql://...neon.tech/pilemetric?sslmode=require` |
 | `GOOGLE_CLIENT_ID` | `xxx.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxx` |
-| `SESSION_SECRET` | (64-char random string) |
+| `GOOGLE_REDIRECT_URI` | `https://api.yourdomain.com/api/auth/google/callback` |
+| `FRONTEND_URL` | `https://yourdomain.com` |
+| `SESSION_SECRET` | (64-char random string — lihat generate command di atas) |
 | `WEBODM_LIGHTNING_TOKEN` | Your WebODM Lightning API token |
+| `LOG_LEVEL` | `info` |
 
 Click **Save** after adding all variables.
-
-> **Generate a secure SESSION_SECRET:**
-> ```bash
-> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-> ```
 
 ---
 
