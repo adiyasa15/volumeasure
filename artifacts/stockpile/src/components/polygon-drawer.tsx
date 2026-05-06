@@ -95,10 +95,12 @@ function FitOnOpen({
   jobId,
   open,
   onBounds,
+  onOrthoBlob,
 }: {
   jobId: string;
   open: boolean;
   onBounds: (b: OrthophotoBounds) => void;
+  onOrthoBlob: (url: string) => void;
 }) {
   const map = useMap();
 
@@ -108,16 +110,25 @@ function FitOnOpen({
       map.invalidateSize();
       try {
         const token = getActiveToken();
-        const res = await fetch(`/api/jobs/${jobId}/tilejson`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { bounds?: [number, number, number, number] };
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        // 1. Fetch bounds (tilejson)
+        const tjRes = await fetch(`/api/jobs/${jobId}/tilejson`, { headers });
+        if (!tjRes.ok) return;
+        const data = (await tjRes.json()) as { bounds?: [number, number, number, number] };
         if (!data?.bounds) return;
         const [west, south, east, north] = data.bounds;
         const leafletBounds: OrthophotoBounds = [[south, west], [north, east]];
         onBounds(leafletBounds);
         map.fitBounds(leafletBounds, { padding: [24, 24], maxZoom: 20 });
+
+        // 2. Fetch orthophoto JPEG with auth token → blob URL so ImageOverlay
+        //    can load it (plain <img src> can't send Authorization headers)
+        const imgRes = await fetch(`/api/jobs/${jobId}/orthophoto-jpeg`, { headers });
+        if (!imgRes.ok) return;
+        const blob = await imgRes.blob();
+        onOrthoBlob(URL.createObjectURL(blob));
       } catch {
         // silent
       }
@@ -167,6 +178,7 @@ export function PolygonDrawer({
   const [isCalculating, setIsCalculating] = useState(false);
   const [result, setResult] = useState<DrawerVolumeResult | null>(null);
   const [orthoBounds, setOrthoBounds] = useState<OrthophotoBounds | null>(null);
+  const [orthoBlobUrl, setOrthoBlobUrl] = useState<string | null>(null);
   const [orthoOpacity, setOrthoOpacity] = useState(0.8);
 
   // Name editing (edit mode)
@@ -176,19 +188,19 @@ export function PolygonDrawer({
   const defaultCenter: LatLng = center ?? [0, 0];
   const isSaving = externalSaving || isCalculating || isSavingName;
 
-  const orthoUrl = `/api/jobs/${jobId}/orthophoto-jpeg`;
-
-  // On open, seed initial vertices and name
+  // On open, seed initial vertices and name; on close revoke blob URL
   useEffect(() => {
     if (open) {
       setVertices(initialVertices ? (initialVertices as LatLng[]) : []);
       setResult(null);
       setOrthoBounds(null);
+      setOrthoBlobUrl(null);
       setEditedName(initialJobName ?? "");
     } else {
       setVertices([]);
       setResult(null);
       setOrthoBounds(null);
+      setOrthoBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -273,15 +285,14 @@ export function PolygonDrawer({
 
         {/* ── Orthophoto banner ──────────────────────────────────────────── */}
         <div className="relative w-full h-[60px] overflow-hidden shrink-0 bg-muted/20">
-          <img
-            src={orthoUrl}
-            alt="NodeODM orthophoto"
-            className="absolute inset-0 w-full h-full object-cover"
-            draggable={false}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
+          {orthoBlobUrl && (
+            <img
+              src={orthoBlobUrl}
+              alt="NodeODM orthophoto"
+              className="absolute inset-0 w-full h-full object-cover"
+              draggable={false}
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-transparent" />
           <div className="absolute inset-x-0 top-0 px-6 pt-4">
             <p className="text-[10px] font-mono uppercase tracking-widest text-white/70 flex items-center gap-1.5">
@@ -432,17 +443,24 @@ export function PolygonDrawer({
                 maxZoom={23}
               />
 
-              {/* NodeODM orthophoto overlay — georeferenced over the survey area */}
-              {orthoBounds && (
+              {/* NodeODM orthophoto overlay — georeferenced over the survey area.
+                  Uses an authenticated blob URL because plain <img src> requests
+                  cannot carry the Authorization header required by the API. */}
+              {orthoBounds && orthoBlobUrl && (
                 <ImageOverlay
-                  url={orthoUrl}
+                  url={orthoBlobUrl}
                   bounds={orthoBounds}
                   opacity={orthoOpacity}
                   zIndex={10}
                 />
               )}
 
-              <FitOnOpen jobId={jobId} open={open} onBounds={setOrthoBounds} />
+              <FitOnOpen
+                jobId={jobId}
+                open={open}
+                onBounds={setOrthoBounds}
+                onOrthoBlob={setOrthoBlobUrl}
+              />
               {!result && <ClickCapture onMapClick={handleClick} />}
               <DotMarkers positions={vertices} />
               {vertices.length >= 3 && (
