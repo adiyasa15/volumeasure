@@ -13,12 +13,29 @@ import { eq, or } from "drizzle-orm";
 
 const { Pool } = pg;
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+function resolveConnectionString(): string {
+  const url = process.env.DATABASE_URL ?? "";
+  const pgHost = process.env.PGHOST ?? "";
+  const urlIsLocalhost = /localhost|127\.0\.0\.1/.test(url);
+  const pgHostIsRemote = pgHost && !/localhost|127\.0\.0\.1/.test(pgHost);
+  if (url && !(urlIsLocalhost && pgHostIsRemote)) return url;
+  if (pgHost) {
+    const user = process.env.PGUSER ?? "postgres";
+    const pass = process.env.PGPASSWORD ?? "";
+    const port = process.env.PGPORT ?? "5432";
+    const db   = process.env.PGDATABASE ?? "postgres";
+    return `postgresql://${user}:${encodeURIComponent(pass)}@${pgHost}:${port}/${db}`;
+  }
+  if (url) return url;
+  throw new Error("DATABASE_URL must be set.");
+}
+
+const pool = new Pool({ connectionString: resolveConnectionString() });
 const db = drizzle(pool);
 
 const USERNAME = "superadmin";
 const PASSWORD = "D1gitech";
-const EMAIL = "adiyasa@gmail.com";
+const EMAIL = "superadmin@pilemetric.local";
 const DISPLAY_NAME = "Super Admin";
 
 async function main() {
@@ -37,10 +54,11 @@ async function main() {
 
   if (existing) {
     console.log(`Superadmin already exists (id: ${existing.id}, username: ${existing.username}, role: ${existing.role}, status: ${existing.status})`);
-    console.log("Updating role and status to super_admin / approved...");
+    console.log("Updating role, status, and password to super_admin / approved...");
+    const passwordHash = await bcrypt.hash(PASSWORD, 10);
     await db
       .update(userProfilesTable)
-      .set({ role: "super_admin", status: "approved" })
+      .set({ role: "super_admin", status: "approved", passwordHash })
       .where(eq(userProfilesTable.id, existing.id));
     console.log("Done.");
     await pool.end();
