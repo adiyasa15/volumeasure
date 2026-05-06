@@ -413,9 +413,30 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
     // Real NodeODM task — poll for status
     const task = await getTask(row.webodmTaskId);
     if (!task) {
-      // Task no longer exists on WebODM (purged or never committed) — mark failed
-      // so it doesn't remain stuck in "queued" forever.
-      nextStatus = "failed";
+      // Task no longer exists on WebODM — purged after a few days (expected
+      // behaviour for WebODM Lightning).
+      //
+      // A job is considered "was completed" if:
+      //   • its current status is "completed", OR
+      //   • it has concrete evidence of completion: orthophotoUrl = "tiles_ready"
+      //     AND completedAt is set (and optionally volume already calculated).
+      //
+      // This also auto-recovers jobs that were wrongly flipped to "failed" by a
+      // previous version of this code, as long as those completion signals are
+      // still present in the DB row.
+      const wasCompleted =
+        row.status === "completed" ||
+        (row.orthophotoUrl === "tiles_ready" && row.completedAt != null);
+
+      if (wasCompleted) {
+        // Keep (or restore) to completed — assets expired on WebODM but all
+        // cached data (JPEG, DSM/DTM, polygon, volume) is still in the DB.
+        nextStatus = "completed";
+      } else {
+        // Job never finished before WebODM purged it — mark failed so it
+        // doesn't remain stuck in "queued" / "running" forever.
+        nextStatus = "failed";
+      }
     } else {
       // NodeODM returns status as { code: number }
       const statusCode = task.status?.code ?? null;
@@ -631,7 +652,7 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
 
   if (!row) { res.status(404).end(); return; }
 
-  // Try to get real bounds from NodeODM assets
+  // Try to get real bounds from NodeODM assets (only when task is still live)
   if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
     const bounds = await fetchOrthophotoBounds(row.webodmTaskId);
     if (bounds) {
@@ -640,7 +661,21 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
     }
   }
 
-  // Fallback: approximate bounds from job GPS center (~55 m padding)
+  // Fallback 1: derive bounds from the stored polygon coordinates (most accurate —
+  // these are the actual survey boundary coordinates saved at job completion)
+  const poly = row.polygonCoordinates as number[][] | null;
+  if (poly && poly.length >= 3) {
+    const lats = poly.map((p) => p[0]);
+    const lngs = poly.map((p) => p[1]);
+    const south = Math.min(...lats);
+    const north = Math.max(...lats);
+    const west  = Math.min(...lngs);
+    const east  = Math.max(...lngs);
+    res.json({ bounds: [west, south, east, north] });
+    return;
+  }
+
+  // Fallback 2: approximate bounds from job GPS center (~55 m padding)
   if (row.latitude != null && row.longitude != null) {
     const d = 0.0005;
     res.json({
