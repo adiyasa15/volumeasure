@@ -514,6 +514,27 @@ Certbot memperbarui sertifikat secara otomatis via cron.
 
 ### 7.11 Update aplikasi
 
+> **Penting:** `dist/` ada di `.gitignore` — `git pull` hanya mengambil source code, **bukan** file yang sudah di-build. Anda **wajib** rebuild setiap kali update kode.
+
+#### Cara cepat — gunakan script deploy.sh
+
+Script `deploy.sh` sudah tersedia di root project dan menjalankan semua langkah sekaligus:
+
+```bash
+cd /var/www/pilemetric
+git pull origin main
+./deploy.sh
+```
+
+Script ini otomatis melakukan:
+1. `pnpm install --frozen-lockfile`
+2. `pnpm --filter @workspace/db run push`
+3. Build API server → `artifacts/api-server/dist/index.mjs`
+4. Build frontend → `artifacts/stockpile/dist/public/`
+5. `sudo systemctl restart pilemetric-api` (atau PM2 jika digunakan)
+
+#### Cara manual (langkah per langkah)
+
 ```bash
 cd /var/www/pilemetric
 git pull origin main
