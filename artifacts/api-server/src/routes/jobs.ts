@@ -486,6 +486,17 @@ router.post("/:id/refresh", requireUser, async (req: AuthedRequest, res) => {
                     .then(() => logger.info({ jobId: row.id }, "DSM/DTM bytes cached in DB"))
                     .catch((err: unknown) => logger.warn({ err, jobId: row.id }, "DSM/DTM cache write failed"));
                 }
+
+                // Cache orthophoto bounds so the polygon-drawer ImageOverlay always
+                // shows the full survey area even after the WebODM task expires and
+                // the user has edited polygonCoordinates to a smaller area.
+                if (!row.orthophotoBoundsJson) {
+                  db.update(jobsTable)
+                    .set({ orthophotoBoundsJson: JSON.stringify(bounds) })
+                    .where(eq(jobsTable.id, row.id))
+                    .then(() => logger.info({ jobId: row.id }, "Orthophoto bounds cached in DB"))
+                    .catch((err: unknown) => logger.warn({ err, jobId: row.id }, "Orthophoto bounds cache write failed"));
+                }
               }
             }
           } catch (err) {
@@ -680,26 +691,34 @@ router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
   if (row.webodmTaskId && row.orthophotoUrl === "tiles_ready") {
     const bounds = await fetchOrthophotoBounds(row.webodmTaskId);
     if (bounds) {
+      // Opportunistically cache so future calls work even after task expires
+      if (!row.orthophotoBoundsJson) {
+        db.update(jobsTable)
+          .set({ orthophotoBoundsJson: JSON.stringify(bounds) })
+          .where(eq(jobsTable.id, id))
+          .catch((err: unknown) => logger.warn({ err, jobId: id }, "Orthophoto bounds cache write failed (tilejson)"));
+      }
       res.json({ bounds });
       return;
     }
   }
 
-  // Fallback 1: derive bounds from the stored polygon coordinates (most accurate —
-  // these are the actual survey boundary coordinates saved at job completion)
-  const poly = row.polygonCoordinates as number[][] | null;
-  if (poly && poly.length >= 3) {
-    const lats = poly.map((p) => p[0]);
-    const lngs = poly.map((p) => p[1]);
-    const south = Math.min(...lats);
-    const north = Math.max(...lats);
-    const west  = Math.min(...lngs);
-    const east  = Math.max(...lngs);
-    res.json({ bounds: [west, south, east, north] });
-    return;
+  // Fallback 1: cached orthophoto bounds — always reflects the original full
+  // survey area regardless of any subsequent polygon edits by the user.
+  if (row.orthophotoBoundsJson) {
+    try {
+      const bounds = JSON.parse(row.orthophotoBoundsJson) as [number, number, number, number];
+      res.json({ bounds });
+      return;
+    } catch {
+      // malformed cache — fall through
+    }
   }
 
   // Fallback 2: approximate bounds from job GPS center (~55 m padding)
+  // NOTE: polygon coordinates are intentionally NOT used here — they change
+  // whenever the user edits the measurement boundary and do not represent the
+  // full orthophoto coverage area.
   if (row.latitude != null && row.longitude != null) {
     const d = 0.0005;
     res.json({

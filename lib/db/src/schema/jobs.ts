@@ -68,6 +68,11 @@ export const jobsTable = pgTable(
     dsmCacheB64: text("dsm_cache_b64"),
     /** Raw GeoTIFF bytes for the DTM, base64-encoded. Paired with dsmCacheB64. */
     dtmCacheB64: text("dtm_cache_b64"),
+    /** Orthophoto bounding box [west, south, east, north] stored as JSON.
+     *  Cached at job completion from WebODM so the ImageOverlay in the
+     *  polygon-drawer always shows the full survey area even after the
+     *  WebODM task expires and polygonCoordinates has been edited. */
+    orthophotoBoundsJson: text("orthophoto_bounds_json"),
   },
   (table) => ({
     userIdx: index("jobs_user_id_idx").on(table.userId),
