@@ -319,6 +319,10 @@ components:
           nullable: true
         gcpEnabled:
           type: boolean
+        gcpFileName:
+          type: string
+          nullable: true
+          description: Original filename of the uploaded GCP file (e.g. gcp_list.txt)
         webodmGcpUrl:
           type: string
           nullable: true

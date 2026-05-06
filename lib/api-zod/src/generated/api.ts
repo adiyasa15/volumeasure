@@ -34,6 +34,10 @@ export const ListJobsResponseItem = zod.object({
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
+  gcpFileName: zod
+    .string()
+    .nullish()
+    .describe("Original filename of the uploaded GCP file (e.g. gcp_list.txt)"),
   webodmGcpUrl: zod.string().nullish(),
   totalFileSizeBytes: zod.number().nullish(),
   captureLocation: zod.string().nullish(),
@@ -127,6 +131,10 @@ export const GetJobResponse = zod.object({
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
+  gcpFileName: zod
+    .string()
+    .nullish()
+    .describe("Original filename of the uploaded GCP file (e.g. gcp_list.txt)"),
   webodmGcpUrl: zod.string().nullish(),
   totalFileSizeBytes: zod.number().nullish(),
   captureLocation: zod.string().nullish(),
@@ -187,6 +195,10 @@ export const SetJobPolygonResponse = zod.object({
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
+  gcpFileName: zod
+    .string()
+    .nullish()
+    .describe("Original filename of the uploaded GCP file (e.g. gcp_list.txt)"),
   webodmGcpUrl: zod.string().nullish(),
   totalFileSizeBytes: zod.number().nullish(),
   captureLocation: zod.string().nullish(),
@@ -236,6 +248,10 @@ export const RefreshJobResponse = zod.object({
   longitude: zod.number().nullish(),
   notes: zod.string().nullish(),
   gcpEnabled: zod.boolean(),
+  gcpFileName: zod
+    .string()
+    .nullish()
+    .describe("Original filename of the uploaded GCP file (e.g. gcp_list.txt)"),
   webodmGcpUrl: zod.string().nullish(),
   totalFileSizeBytes: zod.number().nullish(),
   captureLocation: zod.string().nullish(),

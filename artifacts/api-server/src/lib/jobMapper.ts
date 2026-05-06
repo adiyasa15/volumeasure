@@ -23,6 +23,7 @@ export function rowToJob(row: JobRow, ownerName?: string | null, ownerEmail?: st
     notes: row.notes ?? null,
     polygonMode: (row.polygonMode ?? "automatic") as "automatic" | "manual",
     gcpEnabled: row.gcpEnabled === 1,
+    gcpFileName: row.gcpFileName ?? null,
     webodmGcpUrl: row.webodmGcpUrl ?? null,
     totalFileSizeBytes: row.totalFileSizeBytes ?? null,
     captureLocation: row.captureLocation ?? null,

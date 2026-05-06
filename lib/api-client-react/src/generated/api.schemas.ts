@@ -103,6 +103,8 @@ export interface Job {
   longitude?: number | null;
   notes?: string | null;
   gcpEnabled: boolean;
+  /** Original filename of the uploaded GCP file (e.g. gcp_list.txt) */
+  gcpFileName?: string | null;
   webodmGcpUrl?: string | null;
   totalFileSizeBytes?: number | null;
   captureLocation?: string | null;

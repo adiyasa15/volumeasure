@@ -504,7 +504,36 @@ export default function JobDetail() {
                   <div className="text-xs text-muted-foreground font-mono uppercase mb-1">GCP</div>
                   <div className={`font-mono uppercase font-medium flex items-center gap-1.5 ${job.gcpEnabled ? "text-primary" : "text-muted-foreground"}`}>
                     {job.gcpEnabled ? (
-                      <><CheckCircle2 className="h-3.5 w-3.5" /> Yes</>
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Yes
+                        {job.gcpFileName && (
+                          <a
+                            href={`/api/jobs/${job.id}/gcp`}
+                            download={job.gcpFileName}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const token = getActiveToken();
+                              fetch(`/api/jobs/${job.id}/gcp`, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              }).then(async (r) => {
+                                if (!r.ok) return;
+                                const blob = await r.blob();
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = job.gcpFileName ?? "gcp_list.txt";
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              });
+                            }}
+                            className="ml-1 inline-flex items-center gap-1 text-[10px] font-mono text-primary/70 hover:text-primary border border-primary/30 hover:border-primary/60 rounded px-1.5 py-0.5 transition-colors"
+                            title={`Download ${job.gcpFileName}`}
+                          >
+                            <Download className="h-2.5 w-2.5" />
+                            {job.gcpFileName}
+                          </a>
+                        )}
+                      </>
                     ) : (
                       <><AlertCircle className="h-3.5 w-3.5 opacity-40" /> No</>
                     )}

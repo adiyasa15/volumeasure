@@ -640,6 +640,30 @@ router.get("/:id/download", requireUser, async (req: AuthedRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/jobs/:id/gcp — download the original GCP file used in this job
+// ---------------------------------------------------------------------------
+router.get("/:id/gcp", async (req: AuthedRequest, res) => {
+  const { id } = req.params;
+  const [row] = await db
+    .select()
+    .from(jobsTable)
+    .where(jobByIdCondition(id, req))
+    .limit(1);
+
+  if (!row) { res.status(404).end(); return; }
+  if (!row.gcpFileContent) {
+    res.status(404).json({ error: "No GCP file stored for this job" });
+    return;
+  }
+
+  const filename = (row.gcpFileName ?? "gcp_list.txt").replace(/[^a-zA-Z0-9._\-() ]/g, "_");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "private, max-age=86400");
+  res.status(200).send(row.gcpFileContent);
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/jobs/:id/tilejson — orthophoto bounding box for map auto-fly
 // ---------------------------------------------------------------------------
 router.get("/:id/tilejson", async (req: AuthedRequest, res) => {
