@@ -17,7 +17,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
 const USERNAME = "superadmin";
-const PASSWORD = "D1g1t3ch";
+const PASSWORD = "D1gitech";
 const EMAIL = "adiyasa@gmail.com";
 const DISPLAY_NAME = "Super Admin";
 

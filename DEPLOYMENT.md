@@ -1,583 +1,323 @@
 # PileMetric — Deployment Guide
 
-> **Scope:** This guide covers the current production version of PileMetric — the `artifacts/stockpile` React frontend + `artifacts/api-server` Express backend + `lib/db` PostgreSQL schema. It does not cover CartesianMetric or any proposed features.
+Panduan deployment lengkap untuk semua environment.
 
 ---
 
-## Table of Contents
+## Daftar Isi
 
-1. [Architecture Overview](#1-architecture-overview)
-2. [Prerequisites](#2-prerequisites)
-3. [Clone & Local Development](#3-clone--local-development)
-4. [Environment Variables — Referensi Lengkap](#4-environment-variables)
-5. [Database Setup](#5-database-setup)
-6. [Build for Production](#6-build-for-production)
-7. [Push to GitHub](#7-push-to-github)
-8. [Deploy — Option A: Web Hosting (Vercel + Railway)](#8-deploy--option-a-web-hosting-vercel--railway)
-9. [Deploy — Option B: VM / VPS Linux (Debian/Ubuntu + Nginx + Autostart)](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2)
-   - [9.5 File .env untuk VM/VPS](#95-create-the-env-file)
-   - [9.6 Autostart: systemd (Disarankan) atau PM2](#96-autostart-saat-booting--pilih-salah-satu-metode)
-10. [Deploy — Option C: Docker / Kubernetes](#10-deploy--option-c-kubernetes)
-    - [10.0 File .env untuk Docker](#100-file-env-untuk-docker--kubernetes)
-11. [Deploy — Option D: Rumahweb cPanel Hosting](#11-deploy--option-d-rumahweb-cpanel-hosting)
-    - [11.4 File .env untuk Rumahweb](#114-file-env-untuk-rumahweb)
-12. [Testing & Smoke Checks](#12-testing--smoke-checks)
-13. [Troubleshooting](#13-troubleshooting)
+1. [Arsitektur Aplikasi](#1-arsitektur-aplikasi)
+2. [Prasyarat](#2-prasyarat)
+3. [File .env — Referensi Lengkap](#3-file-env--referensi-lengkap)
+4. [Setup Database](#4-setup-database)
+5. [Seed Akun Superadmin](#5-seed-akun-superadmin)
+6. [Build untuk Production](#6-build-untuk-production)
+7. [Deploy — VM / VPS Linux (Debian/Ubuntu)](#7-deploy--vm--vps-linux-debianubuntu)
+8. [Deploy — Docker](#8-deploy--docker)
+9. [Deploy — Rumahweb cPanel](#9-deploy--rumahweb-cpanel)
+10. [Deploy — Web Hosting (Vercel + Railway)](#10-deploy--web-hosting-vercel--railway)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
-## 1. Architecture Overview
+## 1. Arsitektur Aplikasi
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        Browser / Client                       │
-└────────────────────┬────────────────────────────────────────-┘
-                     │ HTTPS
-          ┌──────────▼──────────┐
-          │   Reverse Proxy      │  (Nginx / Ingress / CDN)
-          │   / → Frontend       │
-          │   /api → API Server  │
-          └──────┬──────┬───────┘
-                 │      │
-    ┌────────────▼──┐ ┌─▼──────────────────┐
-    │  Frontend      │ │  API Server         │
-    │  React + Vite  │ │  Node.js + Express  │
-    │  Static files  │ │  Port 8080          │
-    └────────────────┘ └────────┬────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │   PostgreSQL DB         │
-                    │   (Drizzle ORM)         │
-                    └───────────────────────-┘
-                                │
-                    ┌───────────▼───────────┐
-                    │  WebODM Lightning       │
-                    │  spark1.webodm.net      │
-                    │  (NodeODM photogram.)   │
-                    └────────────────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │  Google OAuth 2.0       │
-                    │  (accounts.google.com)  │
-                    └────────────────────────┘
+Browser
+  │
+  └── HTTPS ──► Nginx / Reverse Proxy
+                  │
+                  ├── /        ──► Frontend (React + Vite, file statis)
+                  └── /api/    ──► API Server (Node.js + Express, port 8080)
+                                       │
+                                       ├── PostgreSQL (Drizzle ORM)
+                                       ├── WebODM Lightning (fotogrametri)
+                                       └── Google OAuth 2.0
 ```
 
-**Monorepo packages:**
-
-| Package | Path | Role |
+| Package | Path | Fungsi |
 |---|---|---|
 | `@workspace/stockpile` | `artifacts/stockpile/` | React 19 + Vite frontend |
 | `@workspace/api-server` | `artifacts/api-server/` | Express 5 REST API |
-| `@workspace/db` | `lib/db/` | Drizzle ORM schema + migrations |
-| `@workspace/api-spec` | `lib/api-spec/` | OpenAPI 3 contract |
-| `@workspace/api-zod` | `lib/api-zod/` | Generated Zod validators |
-| `@workspace/api-client-react` | `lib/api-client-react/` | Generated React Query hooks |
+| `@workspace/db` | `lib/db/` | Drizzle ORM schema + migrasi |
 
 ---
 
-## 2. Prerequisites
+## 2. Prasyarat
 
-### Software (all platforms)
+### Software
 
-| Tool | Minimum Version | Install |
+| Tool | Versi Minimum | Install |
 |---|---|---|
-| Node.js | 20 LTS | https://nodejs.org or `nvm install 20` |
+| Node.js | 20 LTS | https://nodejs.org |
 | pnpm | 9.x | `npm install -g pnpm@9` |
 | Git | 2.40+ | https://git-scm.com |
 | PostgreSQL | 15+ | https://www.postgresql.org |
 
-### External Accounts / API Keys
+### Akun Eksternal
 
-| Service | Purpose | Signup |
+| Layanan | Kebutuhan | URL |
 |---|---|---|
-| **Google Cloud** | OAuth 2.0 user authentication | https://console.cloud.google.com — create an OAuth 2.0 Client ID (Web application) |
-| **WebODM Lightning** | Photogrammetry processing (NodeODM SaaS) | https://webodm.net/lightning |
-
-### Optional (for VM / Kubernetes only)
-
-| Tool | Purpose |
-|---|---|
-| Docker 24+ | Container builds |
-| kubectl + helm | Kubernetes deployments |
-| nginx | Reverse proxy on VMs |
-| PM2 | Node.js process manager on VMs |
+| Google Cloud | OAuth 2.0 Client ID (Web application) | https://console.cloud.google.com |
+| WebODM Lightning | API Token untuk fotogrametri | https://webodm.net/lightning |
 
 ---
 
-## 3. Clone & Local Development
+## 3. File .env — Referensi Lengkap
 
-### 3.1 Clone the repository
-
-```bash
-git clone https://github.com/<your-org>/pilemetric.git
-cd pilemetric
-```
-
-### 3.2 Install dependencies
-
-```bash
-pnpm install
-```
-
-> pnpm installs all workspace packages from a single `pnpm-lock.yaml`. Never use `npm install` or `yarn`.
-
-### 3.3 Configure environment variables
-
-Copy the example file and fill in your values (see [Section 4](#4-environment-variables)):
-
-```bash
-cp .env.example .env
-```
-
-### 3.4 Push the database schema
-
-```bash
-pnpm --filter @workspace/db run push
-```
-
-This applies all Drizzle table definitions to your PostgreSQL database. Re-run whenever schema files in `lib/db/src/schema/` change.
-
-### 3.5 Start the development servers
-
-**Terminal 1 — API server:**
-```bash
-pnpm --filter @workspace/api-server run dev
-```
-
-**Terminal 2 — Frontend:**
-```bash
-PORT=18296 BASE_PATH=/ pnpm --filter @workspace/stockpile run dev
-```
-
-Open http://localhost:18296 in your browser.
-
-The API runs on port 8080 (`/api` prefix). The Vite dev server proxies nothing — in development the frontend hits the API directly via `/api` path, which your browser routes to the API server through the reverse proxy (or you can run them behind a local nginx).
-
----
-
-## 4. Environment Variables
-
-Create a `.env` file at the **project root** (or inject them into the runtime environment on your hosting platform). The API server loads these at startup.
-
-### 4.1 Required — API Server
-
-```dotenv
-# ----- Database -----
-DATABASE_URL=postgresql://user:password@localhost:5432/pilemetric
-
-# ----- Authentication (Google OAuth 2.0) -----
-# From Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
-GOOGLE_CLIENT_ID=xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# Optional overrides — leave blank to auto-detect from the request origin
-GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
-FRONTEND_URL=https://yourdomain.com
-
-# ----- Session -----
-# Any long random string — used to sign local-admin JWTs
-SESSION_SECRET=change-me-to-a-64-char-random-string
-
-# ----- NodeODM / WebODM Lightning -----
-# API token from https://webodm.net/lightning → Account → API Token
-WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# ----- Server -----
-PORT=8080
-NODE_ENV=production
-```
-
-### 4.2 Required — Frontend build
-
-These are read at **build time** by Vite (they are baked into the static bundle):
-
-```dotenv
-# Optional: explicit API base URL when the frontend and API are on different domains
-# Defaults to /api (same-origin proxy). Only needed for split deployments.
-VITE_API_URL=https://api.yourdomain.com
-
-# Base path the frontend is served from (/ for root, /app for a sub-path)
-BASE_PATH=/
-```
-
-> `VITE_` prefixed variables are embedded in the JS bundle. Never put secret keys with this prefix.
-
-### 4.3 Local admin account
-
-The first run automatically seeds a `super_admin` local account. You can change credentials via the Admin → Settings page in the running app. These credentials are stored hashed in the database — they are not environment variables.
-
-Default credentials (change immediately after first deploy):
-- Username: `superadmin`
-- Password: `D1g1t3ch`
-
----
-
-## 5. Database Setup
-
-PileMetric uses **Drizzle ORM** with PostgreSQL. There are no migration files — Drizzle uses `push` mode which applies the TypeScript schema directly.
-
-### 5.1 Create the database
-
-```sql
--- Connect to postgres as superuser
-CREATE DATABASE pilemetric;
-CREATE USER pilemetric_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE pilemetric TO pilemetric_user;
-```
-
-### 5.2 Apply schema
-
-```bash
-DATABASE_URL=postgresql://pilemetric_user:your_password@localhost:5432/pilemetric \
-  pnpm --filter @workspace/db run push
-```
-
-### 5.3 Tables created
-
-| Table | Purpose |
-|---|---|
-| `jobs` | Photogrammetry jobs — polygon, volume, DSM/DTM cache |
-| `user_profiles` | Google OAuth users + local admin accounts, role, status |
-| `activity_logs` | Audit trail — logins, job creation, deletions |
-| `app_settings` | Key-value store — WebODM token override, system config |
-
-### 5.4 Schema updates
-
-When code changes alter `lib/db/src/schema/*.ts`:
-
-```bash
-pnpm --filter @workspace/db run push
-```
-
-For destructive changes (column renames, drops) use:
-```bash
-pnpm --filter @workspace/db run push-force
-```
-
----
-
-## 6. Build for Production
-
-### 6.1 Typecheck everything
-
-```bash
-pnpm run typecheck
-```
-
-### 6.2 Build the API server
-
-```bash
-NODE_ENV=production pnpm --filter @workspace/api-server run build
-```
-
-Output: `artifacts/api-server/dist/index.mjs` (single bundled ESM file via esbuild).
-
-### 6.3 Build the frontend
-
-```bash
-BASE_PATH=/ \
-pnpm --filter @workspace/stockpile run build
-```
-
-> If your frontend is on a different domain from the API, also pass `VITE_API_URL=https://api.yourdomain.com` before the build command.
-
-Output: `artifacts/stockpile/dist/public/` — static HTML/CSS/JS files ready to serve.
-
-### 6.4 Run the API server in production
-
-```bash
-PORT=8080 NODE_ENV=production \
-  GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com \
-  GOOGLE_CLIENT_SECRET=GOCSPX-xxx \
-  DATABASE_URL=postgresql://... \
-  SESSION_SECRET=... \
-  WEBODM_LIGHTNING_TOKEN=xxx \
-  node --enable-source-maps artifacts/api-server/dist/index.mjs
-```
-
-Health check endpoint: `GET /api/healthz` → returns `{"status":"ok"}` with HTTP 200.
-
----
-
-## 7. Push to GitHub
-
-### 7.1 Create repository
-
-```bash
-# Create a new private repo on GitHub, then:
-git remote add origin https://github.com/<your-org>/pilemetric.git
-git branch -M main
-git push -u origin main
-```
-
-### 7.2 Recommended `.gitignore` additions
-
-Ensure these are in `.gitignore`:
-
-```
-.env
-.env.local
-node_modules/
-artifacts/*/dist/
-artifacts/api-server/dist/
-lib/*/dist/
-*.tif
-attached_assets/
-```
-
-### 7.3 GitHub Actions CI (optional but recommended)
-
-Create `.github/workflows/ci.yml`:
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  typecheck-and-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm run typecheck
-
-      - name: Build API server
-        run: pnpm --filter @workspace/api-server run build
-        env:
-          NODE_ENV: production
-
-      - name: Build frontend
-        run: pnpm --filter @workspace/stockpile run build
-        env:
-          BASE_PATH: /
-```
-
-Add the following repository secrets in GitHub → Settings → Secrets:
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `DATABASE_URL`
-- `SESSION_SECRET`
-- `WEBODM_LIGHTNING_TOKEN`
-
----
-
-## 8. Deploy — Option A: Web Hosting (Vercel + Railway)
-
-This is the simplest option. The frontend (static files) goes to Vercel/Netlify/Cloudflare Pages and the API server goes to Railway/Render/Fly.io.
-
-### 8.1 Deploy the API server to Railway
-
-1. Go to https://railway.app → New Project → Deploy from GitHub repo
-2. Select your repository
-3. Railway detects Node.js. Set the **Start command**:
-   ```
-   node --enable-source-maps artifacts/api-server/dist/index.mjs
-   ```
-4. Set the **Build command**:
-   ```
-   pnpm install && pnpm --filter @workspace/api-server run build
-   ```
-5. Add environment variables in Railway dashboard:
-   ```
-   DATABASE_URL           = (use Railway's built-in Postgres plugin)
-   GOOGLE_CLIENT_ID       = xxx.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET   = GOCSPX-xxx
-   GOOGLE_REDIRECT_URI    = https://pilemetric-api.up.railway.app/api/auth/google/callback
-   FRONTEND_URL           = https://pilemetric.vercel.app
-   SESSION_SECRET         = (64-char random string)
-   WEBODM_LIGHTNING_TOKEN = xxx
-   PORT                   = 8080
-   NODE_ENV               = production
-   ```
-6. Add a **PostgreSQL plugin** in Railway. Copy the `DATABASE_URL` it generates.
-7. After deploy, run the schema push once:
-   ```bash
-   DATABASE_URL=<railway_url> pnpm --filter @workspace/db run push
-   ```
-8. Note your Railway service URL, e.g. `https://pilemetric-api.up.railway.app`
-
-### 8.2 Deploy the frontend to Vercel
-
-1. Go to https://vercel.com → New Project → Import from GitHub
-2. Set **Framework Preset** to `Vite`
-3. Set **Root Directory** to `artifacts/stockpile`
-4. Set **Build Command** to:
-   ```
-   cd ../.. && pnpm install && BASE_PATH=/ pnpm --filter @workspace/stockpile run build
-   ```
-5. Set **Output Directory** to `dist/public`
-6. Add environment variables:
-   ```
-   VITE_API_URL = https://pilemetric-api.up.railway.app
-   BASE_PATH    = /
-   ```
-7. Deploy. Note your Vercel domain, e.g. `https://pilemetric.vercel.app`
-
-### 8.3 Configure Google OAuth redirect URI
-
-In Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client ID:
-- Under **Authorized redirect URIs**, add:
-  `https://pilemetric-api.up.railway.app/api/auth/google/callback`
-- Under **Authorized JavaScript origins**, add:
-  `https://pilemetric.vercel.app`
-
-### 8.4 Wire up the API base URL
-
-In Vercel, add a rewrite rule so `/api/*` proxies to your Railway API:
-
-Create `artifacts/stockpile/vercel.json`:
-```json
-{
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://pilemetric-api.up.railway.app/api/:path*"
-    }
-  ]
-}
-```
-
-Redeploy Vercel after adding this file.
-
----
-
-## 9. Deploy — Option B: VM Instance (Ubuntu + Nginx + PM2)
-
-Suitable for AWS EC2, GCP Compute Engine, Azure VM, DigitalOcean Droplet, or any bare Ubuntu 22.04 server.
-
-### 9.1 Provision the VM
-
-Minimum recommended specs:
-- **CPU:** 2 vCPU
-- **RAM:** 4 GB (GeoTIFF parsing is memory-intensive)
-- **Disk:** 20 GB SSD
-- **OS:** Ubuntu 22.04 LTS
-- **Open ports:** 80 (HTTP), 443 (HTTPS), 22 (SSH)
-
-### 9.2 Install system dependencies
-
-```bash
-# Update system
-sudo apt-get update && sudo apt-get upgrade -y
-
-# Install Node.js 20 via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install pnpm
-sudo npm install -g pnpm@9
-
-# Install PM2 (process manager)
-sudo npm install -g pm2
-
-# Install nginx
-sudo apt-get install -y nginx
-
-# Install PostgreSQL 15
-sudo apt-get install -y postgresql postgresql-contrib
-
-# Install git
-sudo apt-get install -y git
-
-# Verify versions
-node --version    # v20.x.x
-pnpm --version    # 9.x.x
-nginx -v
-psql --version
-```
-
-### 9.3 Set up PostgreSQL
-
-```bash
-sudo -u postgres psql <<EOF
-CREATE DATABASE pilemetric;
-CREATE USER pilemetric_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE pilemetric TO pilemetric_user;
-EOF
-```
-
-### 9.4 Clone and build
-
-```bash
-# Clone repo
-cd /var/www
-sudo git clone https://github.com/<your-org>/pilemetric.git
-sudo chown -R $USER:$USER pilemetric
-cd pilemetric
-
-# Install dependencies
-pnpm install --frozen-lockfile
-
-# Create .env file
-cat > .env << 'EOF'
-DATABASE_URL=postgresql://pilemetric_user:your_secure_password@localhost:5432/pilemetric
-GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxx
-SESSION_SECRET=your-64-char-secret
-WEBODM_LIGHTNING_TOKEN=xxx
-PORT=8080
-NODE_ENV=production
-EOF
-
-# Push DB schema
-pnpm --filter @workspace/db run push
-
-# Build API server
-NODE_ENV=production pnpm --filter @workspace/api-server run build
-
-# Build frontend
-BASE_PATH=/ pnpm --filter @workspace/stockpile run build
-```
-
-### 9.5 Create the .env file
-
-Create `.env` at the project root before starting the server:
-
-```bash
-nano /var/www/pilemetric/.env
-```
-
-Paste and fill in all values:
+Buat file `.env` di **root project**. File ini memuat semua konfigurasi rahasia aplikasi.
 
 ```env
-# ── Database ────────────────────────────────────────────────────
-DATABASE_URL=postgresql://pilemetric_user:your_secure_password@localhost:5432/pilemetric
+# ════════════════════════════════════════════
+# DATABASE
+# ════════════════════════════════════════════
+DATABASE_URL=postgresql://pilemetric_user:password@localhost:5432/pilemetric
 
-# ── Google OAuth 2.0 ────────────────────────────────────────────
-# From: https://console.cloud.google.com → APIs & Services → Credentials
+# ════════════════════════════════════════════
+# GOOGLE OAUTH 2.0
+# Buat di: https://console.cloud.google.com
+#   → APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID
+#   → Application type: Web application
+# ════════════════════════════════════════════
 GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
 FRONTEND_URL=https://yourdomain.com
 
-# ── Auth / Session ──────────────────────────────────────────────
-# Generate with: openssl rand -hex 32
-SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
+# ════════════════════════════════════════════
+# SESSION / JWT
+# Generate: openssl rand -hex 32
+# ════════════════════════════════════════════
+SESSION_SECRET=isi_dengan_string_acak_panjang_minimal_32_karakter
 
-# ── WebODM Lightning ────────────────────────────────────────────
+# ════════════════════════════════════════════
+# WEBODM LIGHTNING
+# Dapatkan token di: https://webodm.net/lightning → Account → API Token
+# ════════════════════════════════════════════
 WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
-# ── Server ──────────────────────────────────────────────────────
+# ════════════════════════════════════════════
+# SERVER
+# ════════════════════════════════════════════
+PORT=8080
+NODE_ENV=production
+
+# ════════════════════════════════════════════
+# OPSIONAL
+# ════════════════════════════════════════════
+LOG_LEVEL=info
+```
+
+### Penjelasan Variabel
+
+| Variabel | Wajib | Keterangan |
+|---|---|---|
+| `DATABASE_URL` | ✅ | String koneksi PostgreSQL |
+| `GOOGLE_CLIENT_ID` | ✅ | Client ID dari Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | ✅ | Client Secret dari Google Cloud Console |
+| `GOOGLE_REDIRECT_URI` | ✅ | Harus sama persis dengan yang didaftarkan di Google Console |
+| `FRONTEND_URL` | ✅ | URL publik frontend (tanpa `/` di akhir) |
+| `SESSION_SECRET` | ✅ | Kunci rahasia untuk menandatangani JWT. Jangan dibagikan. |
+| `WEBODM_LIGHTNING_TOKEN` | ✅ | Token API WebODM untuk pemrosesan fotogrametri |
+| `PORT` | ✅ | Port API server (default: 8080) |
+| `NODE_ENV` | ✅ | Gunakan `production` saat deploy |
+| `LOG_LEVEL` | ❌ | Default `info`. Gunakan `debug` saat troubleshooting |
+
+### Generate SESSION_SECRET
+
+```bash
+openssl rand -hex 32
+```
+
+Salin output dan tempelkan sebagai nilai `SESSION_SECRET`.
+
+---
+
+## 4. Setup Database
+
+### Buat database dan user PostgreSQL
+
+```sql
+CREATE DATABASE pilemetric;
+CREATE USER pilemetric_user WITH PASSWORD 'password_anda';
+GRANT ALL PRIVILEGES ON DATABASE pilemetric TO pilemetric_user;
+GRANT ALL ON SCHEMA public TO pilemetric_user;
+ALTER DATABASE pilemetric OWNER TO pilemetric_user;
+```
+
+Jalankan via psql:
+
+```bash
+sudo -u postgres psql
+```
+
+### Push skema Drizzle ke database
+
+```bash
+pnpm --filter @workspace/db run push
+```
+
+Jalankan ulang setiap kali ada perubahan file di `lib/db/src/schema/`.
+
+---
+
+## 5. Seed Akun Superadmin
+
+Jalankan script berikut **satu kali** setelah database siap untuk membuat akun superadmin pertama:
+
+```bash
+pnpm --filter @workspace/scripts run seed-superadmin
+```
+
+Script ini akan:
+- Membuat akun superadmin baru jika belum ada
+- Jika akun sudah ada, memperbarui role dan status menjadi `super_admin` / `approved`
+
+**Kredensial default superadmin:**
+
+| Field | Nilai |
+|---|---|
+| Username | `superadmin` |
+| Password | `D1gitech` |
+| Role | `super_admin` |
+
+> **Penting:** Ganti password segera setelah login pertama melalui menu Admin → Settings.
+
+### Login superadmin
+
+Buka URL: `https://yourdomain.com/admin-login`
+
+### Fallback: SQL langsung (jika script tidak bisa dijalankan)
+
+```bash
+# 1. Generate bcrypt hash password
+node -e "const b=require('bcryptjs'); b.hash('D1gitech',10).then(h=>console.log(h))"
+```
+
+```sql
+INSERT INTO user_profiles (
+  username, email, display_name, password_hash, role, status
+) VALUES (
+  'superadmin',
+  'admin@yourdomain.com',
+  'Super Admin',
+  '<hash dari perintah di atas>',
+  'super_admin',
+  'approved'
+);
+```
+
+---
+
+## 6. Build untuk Production
+
+### Build API server
+
+```bash
+pnpm --filter @workspace/api-server run build
+```
+
+Output: `artifacts/api-server/dist/index.mjs`
+
+### Build frontend
+
+```bash
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
+```
+
+Output: `artifacts/stockpile/dist/public/`
+
+### Typecheck semua package (opsional, sebelum deploy)
+
+```bash
+pnpm run typecheck
+```
+
+---
+
+## 7. Deploy — VM / VPS Linux (Debian/Ubuntu)
+
+Cocok untuk: AWS EC2, GCP Compute Engine, DigitalOcean Droplet, Rumahweb VPS, atau server Debian/Ubuntu apapun.
+
+**Spesifikasi minimum:** 2 vCPU, 2 GB RAM, 20 GB SSD
+
+---
+
+### 7.1 Install dependensi sistem
+
+```bash
+sudo apt update && sudo apt upgrade -y
+
+# Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# pnpm
+sudo npm install -g pnpm@9
+
+# PostgreSQL
+sudo apt install -y postgresql postgresql-contrib
+
+# Nginx
+sudo apt install -y nginx
+
+# Git
+sudo apt install -y git
+```
+
+---
+
+### 7.2 Setup database PostgreSQL
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE pilemetric;
+CREATE USER pilemetric_user WITH PASSWORD 'password_aman_anda';
+GRANT ALL PRIVILEGES ON DATABASE pilemetric TO pilemetric_user;
+GRANT ALL ON SCHEMA public TO pilemetric_user;
+ALTER DATABASE pilemetric OWNER TO pilemetric_user;
+\q
+```
+
+---
+
+### 7.3 Clone project dan install dependensi
+
+```bash
+cd /var/www
+sudo git clone https://github.com/username/pilemetric.git
+sudo chown -R $USER:$USER pilemetric
+cd pilemetric
+pnpm install --frozen-lockfile
+```
+
+---
+
+### 7.4 Buat file .env
+
+```bash
+nano /var/www/pilemetric/.env
+```
+
+Isi dengan template berikut (sesuaikan semua nilai):
+
+```env
+DATABASE_URL=postgresql://pilemetric_user:password_aman_anda@localhost:5432/pilemetric
+GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
+FRONTEND_URL=https://yourdomain.com
+SESSION_SECRET=isi_dengan_output_openssl_rand_hex_32
+WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 PORT=8080
 NODE_ENV=production
 LOG_LEVEL=info
 ```
 
-Protect the file (it contains secrets):
+Proteksi file:
 
 ```bash
 chmod 600 /var/www/pilemetric/.env
@@ -585,21 +325,53 @@ chmod 600 /var/www/pilemetric/.env
 
 ---
 
-### 9.6 Autostart saat Booting — Pilih salah satu metode
+### 7.5 Push skema dan seed superadmin
 
-Terdapat dua pilihan untuk menjalankan API server secara otomatis saat server Debian/Ubuntu dinyalakan:
+```bash
+cd /var/www/pilemetric
+
+# Push skema database
+pnpm --filter @workspace/db run push
+
+# Buat akun superadmin
+pnpm --filter @workspace/scripts run seed-superadmin
+```
 
 ---
 
-#### Metode A: systemd (Disarankan untuk Debian/Ubuntu)
+### 7.6 Build aplikasi
 
-systemd adalah sistem init bawaan Debian/Ubuntu. Ini adalah cara paling andal untuk autostart tanpa dependensi tambahan.
+```bash
+cd /var/www/pilemetric
+
+# Build API server
+pnpm --filter @workspace/api-server run build
+
+# Build frontend
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
+```
+
+---
+
+### 7.7 Autostart API server — systemd (Disarankan)
+
+systemd adalah sistem init bawaan Debian/Ubuntu, tidak memerlukan dependensi tambahan.
+
+**Langkah 1 — Cek lokasi pnpm:**
+
+```bash
+which pnpm
+```
+
+Catat outputnya (contoh: `/usr/bin/pnpm` atau `/usr/local/bin/pnpm`). Gunakan path ini di `ExecStart`.
+
+**Langkah 2 — Buat file service:**
 
 ```bash
 sudo nano /etc/systemd/system/pilemetric-api.service
 ```
 
-Paste konten berikut (sesuaikan `User` dan `WorkingDirectory`):
+Paste konten berikut (sesuaikan `User`, `WorkingDirectory`, dan path `pnpm`):
 
 ```ini
 [Unit]
@@ -616,37 +388,22 @@ Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# Membaca semua variabel dari file .env secara otomatis
 EnvironmentFile=/var/www/pilemetric/.env
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-> **Cek lokasi pnpm** jika `ExecStart` gagal:
-> ```bash
-> which pnpm
-> # contoh output: /usr/local/bin/pnpm → sesuaikan di ExecStart
-> ```
-
-Aktifkan dan jalankan service:
+**Langkah 3 — Aktifkan dan jalankan:**
 
 ```bash
-# Reload systemd agar mengenali service baru
 sudo systemctl daemon-reload
-
-# Aktifkan autostart saat booting
 sudo systemctl enable pilemetric-api
-
-# Jalankan sekarang
 sudo systemctl start pilemetric-api
-
-# Cek status
 sudo systemctl status pilemetric-api
 ```
 
-Perintah berguna sehari-hari:
+**Perintah sehari-hari:**
 
 ```bash
 # Lihat log real-time
@@ -655,17 +412,19 @@ sudo journalctl -u pilemetric-api -f
 # Restart setelah update kode
 sudo systemctl restart pilemetric-api
 
-# Nonaktifkan autostart
-sudo systemctl disable pilemetric-api
+# Hentikan service
+sudo systemctl stop pilemetric-api
 ```
 
 ---
 
-#### Metode B: PM2 (Node.js Process Manager)
+### 7.8 Autostart API server — PM2 (Alternatif)
 
-PM2 menawarkan fitur tambahan seperti monitoring, log rotation, dan cluster mode.
+```bash
+sudo npm install -g pm2
+```
 
-Create `ecosystem.config.cjs` at the project root:
+Buat file `ecosystem.config.cjs` di root project:
 
 ```javascript
 module.exports = {
@@ -680,74 +439,53 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",
-      error_file: "/var/log/pilemetric/api-error.log",
-      out_file: "/var/log/pilemetric/api-out.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss",
     },
   ],
 };
 ```
 
 ```bash
-# Create log directory
-sudo mkdir -p /var/log/pilemetric
-sudo chown $USER:$USER /var/log/pilemetric
-
-# Start the API server
 pm2 start ecosystem.config.cjs
-
-# Save PM2 config so it survives reboots
 pm2 save
-
-# Auto-start PM2 on boot
 pm2 startup
-# Jalankan perintah yang di-output oleh pm2, contoh:
-# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu
+# Jalankan perintah yang ditampilkan oleh pm2 startup
 ```
 
-### 9.7 Configure Nginx
+---
+
+### 7.9 Konfigurasi Nginx
 
 ```bash
 sudo nano /etc/nginx/sites-available/pilemetric
 ```
 
-Paste:
-
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com www.your-domain.com;
+    server_name yourdomain.com www.yourdomain.com;
 
-    # Frontend — serve static files
     root /var/www/pilemetric/artifacts/stockpile/dist/public;
     index index.html;
 
-    # SPA fallback — send all non-asset requests to index.html
+    # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # API — proxy to Node.js
+    # Proxy ke API server
     location /api/ {
         proxy_pass         http://127.0.0.1:8080;
         proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection keep-alive;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-
-        # Increase timeout for long-running DSM downloads
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-
-        # Increase body size for image uploads
         client_max_body_size 500M;
+        proxy_read_timeout   300s;
+        proxy_send_timeout   300s;
     }
 
-    # Cache static assets
+    # Cache asset statis
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -756,1055 +494,580 @@ server {
 ```
 
 ```bash
-# Enable the site
 sudo ln -s /etc/nginx/sites-available/pilemetric /etc/nginx/sites-enabled/
-sudo nginx -t               # test config
+sudo nginx -t
 sudo systemctl reload nginx
-```
-
-### 9.8 Enable HTTPS with Let's Encrypt
-
-```bash
-sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com
-# Follow prompts — certbot auto-renews via cron
-```
-
-### 9.9 Deploy updates
-
-```bash
-cd /var/www/pilemetric
-
-# Pull latest code
-git pull origin main
-
-# Install any new dependencies
-pnpm install --frozen-lockfile
-
-# Re-run schema push if schema changed
-pnpm --filter @workspace/db run push
-
-# Rebuild
-NODE_ENV=production pnpm --filter @workspace/api-server run build
-BASE_PATH=/ pnpm --filter @workspace/stockpile run build
-
-# Restart API server (zero-downtime reload)
-pm2 reload pilemetric-api
 ```
 
 ---
 
-## 10. Deploy — Option C: Kubernetes
+### 7.10 HTTPS dengan Let's Encrypt
 
-### 10.0 File .env untuk Docker / Kubernetes
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
 
-Buat file `.env` di root project. File ini digunakan oleh `docker-compose` dan juga bisa dimount ke container:
+Certbot memperbarui sertifikat secara otomatis via cron.
+
+---
+
+### 7.11 Update aplikasi
+
+```bash
+cd /var/www/pilemetric
+git pull origin main
+pnpm install --frozen-lockfile
+pnpm --filter @workspace/db run push
+pnpm --filter @workspace/api-server run build
+BASE_PATH=/ pnpm --filter @workspace/stockpile run build
+sudo systemctl restart pilemetric-api
+```
+
+---
+
+## 8. Deploy — Docker
+
+---
+
+### 8.1 Buat file .env untuk Docker
+
+```bash
+nano /var/www/pilemetric/.env
+```
 
 ```env
-# ── Database ─────────────────────────────────────────────────────
-# Gunakan nama service docker-compose sebagai host (bukan localhost)
-DATABASE_URL=postgresql://pilemetric_user:your_db_password@db:5432/pilemetric
-
-# ── Google OAuth 2.0 ─────────────────────────────────────────────
+# Gunakan nama service docker-compose sebagai host database (bukan localhost)
+DATABASE_URL=postgresql://pilemetric_user:password_db@db:5432/pilemetric
 GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GOOGLE_REDIRECT_URI=https://yourdomain.com/api/auth/google/callback
 FRONTEND_URL=https://yourdomain.com
-
-# ── Auth / Session ────────────────────────────────────────────────
-# Generate: openssl rand -hex 32
-SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
-
-# ── WebODM Lightning ─────────────────────────────────────────────
+SESSION_SECRET=isi_dengan_output_openssl_rand_hex_32
 WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# ── Server ───────────────────────────────────────────────────────
 PORT=8080
 NODE_ENV=production
 LOG_LEVEL=info
 
-# ── Docker Compose (password database untuk service db) ──────────
-POSTGRES_PASSWORD=your_db_password
+# Khusus Docker Compose — password untuk service db
+POSTGRES_PASSWORD=password_db
 ```
 
-> **Penting:** `DATABASE_URL` menggunakan `@db:5432` (nama service docker-compose), bukan `@localhost:5432`.
-
-Proteksi file:
-```bash
-chmod 600 .env
-```
-
-Untuk Kubernetes, variabel disimpan sebagai **Secret**, bukan file `.env` — lihat step 10.5.
+> `DATABASE_URL` menggunakan `@db:5432` (nama service di docker-compose), bukan `@localhost:5432`.
 
 ---
 
-### 10.1 Prerequisites
+### 8.2 docker-compose.yml
 
-- Kubernetes cluster (GKE, EKS, AKS, or local k3s/minikube)
-- `kubectl` configured and connected to your cluster
-- `helm` v3
-- Container registry (Docker Hub, GCR, ECR, or GHCR)
-- PostgreSQL accessible from the cluster (Cloud SQL, RDS, or in-cluster)
+Buat file `docker-compose.yml` di root project:
 
-### 10.2 Create Dockerfile for the API server
+```yaml
+version: "3.9"
 
-Create `artifacts/api-server/Dockerfile`:
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pilemetric-db
+    restart: always
+    environment:
+      POSTGRES_DB: pilemetric
+      POSTGRES_USER: pilemetric_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pilemetric-api
+    restart: always
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: pilemetric-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+```
+
+---
+
+### 8.3 Dockerfile (API server)
+
+Buat file `Dockerfile` di root project:
 
 ```dockerfile
-# ── Build stage ──────────────────────────────────────────────
 FROM node:20-alpine AS builder
-
 RUN npm install -g pnpm@9
 WORKDIR /app
-
-# Copy workspace config
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY lib/ ./lib/
 COPY artifacts/api-server/ ./artifacts/api-server/
-
-# Install all workspace deps
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @workspace/api-server run build
 
-# Build the API server
-RUN NODE_ENV=production pnpm --filter @workspace/api-server run build
-
-# ── Runtime stage ─────────────────────────────────────────────
 FROM node:20-alpine AS runtime
-
 WORKDIR /app
-
-# Copy built bundle only (no source or node_modules)
 COPY --from=builder /app/artifacts/api-server/dist/ ./dist/
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -qO- http://localhost:8080/api/healthz || exit 1
-
 EXPOSE 8080
-
 CMD ["node", "--enable-source-maps", "dist/index.mjs"]
 ```
 
-### 10.3 Create Dockerfile for the frontend
+---
 
-Create `artifacts/stockpile/Dockerfile`:
+### 8.4 Dockerfile.frontend
+
+Buat file `Dockerfile.frontend` di root project:
 
 ```dockerfile
-# ── Build stage ──────────────────────────────────────────────
 FROM node:20-alpine AS builder
-
 RUN npm install -g pnpm@9
 WORKDIR /app
-
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY lib/ ./lib/
 COPY artifacts/stockpile/ ./artifacts/stockpile/
-
 RUN pnpm install --frozen-lockfile
+RUN BASE_PATH=/ pnpm --filter @workspace/stockpile run build
 
-ARG BASE_PATH=/
-
-RUN BASE_PATH=${BASE_PATH} \
-    pnpm --filter @workspace/stockpile run build
-
-# ── Nginx runtime ─────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runtime
-
-COPY --from=builder /app/artifacts/stockpile/dist/public/ /usr/share/nginx/html/
-
-# nginx config for SPA routing
-RUN printf 'server {\n\
-  listen 80;\n\
-  root /usr/share/nginx/html;\n\
-  index index.html;\n\
-  location / { try_files $uri $uri/ /index.html; }\n\
-  location /api/ { return 404; }\n\
-}\n' > /etc/nginx/conf.d/default.conf
-
+FROM nginx:alpine
+COPY --from=builder /app/artifacts/stockpile/dist/public /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 ```
 
-### 10.4 Build and push Docker images
+---
 
-```bash
-export REGISTRY=ghcr.io/<your-org>
-export TAG=$(git rev-parse --short HEAD)
+### 8.5 docker/nginx.conf
 
-# API server
-docker build \
-  -f artifacts/api-server/Dockerfile \
-  -t ${REGISTRY}/pilemetric-api:${TAG} \
-  -t ${REGISTRY}/pilemetric-api:latest \
-  .
-docker push ${REGISTRY}/pilemetric-api:${TAG}
-docker push ${REGISTRY}/pilemetric-api:latest
+Buat file `docker/nginx.conf`:
 
-# Frontend
-docker build \
-  -f artifacts/stockpile/Dockerfile \
-  --build-arg BASE_PATH=/ \
-  -t ${REGISTRY}/pilemetric-web:${TAG} \
-  -t ${REGISTRY}/pilemetric-web:latest \
-  .
-docker push ${REGISTRY}/pilemetric-web:${TAG}
-docker push ${REGISTRY}/pilemetric-web:latest
-```
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
 
-### 10.5 Kubernetes manifests
+    location /api/ {
+        proxy_pass http://api:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        client_max_body_size 500M;
+        proxy_read_timeout 300s;
+    }
 
-Create `k8s/` directory at project root with the following files:
-
-**`k8s/namespace.yaml`**
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: pilemetric
-```
-
-**`k8s/secrets.yaml`** (do not commit — apply manually or use Vault/External Secrets)
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pilemetric-secrets
-  namespace: pilemetric
-type: Opaque
-stringData:
-  DATABASE_URL: "postgresql://pilemetric_user:password@postgres-service:5432/pilemetric"
-  GOOGLE_CLIENT_ID: "xxx.apps.googleusercontent.com"
-  GOOGLE_CLIENT_SECRET: "GOCSPX-xxx"
-  SESSION_SECRET: "your-64-char-random-string"
-  WEBODM_LIGHTNING_TOKEN: "xxx"
-```
-
-**`k8s/api-deployment.yaml`**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: pilemetric-api
-  namespace: pilemetric
-  labels:
-    app: pilemetric-api
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: pilemetric-api
-  template:
-    metadata:
-      labels:
-        app: pilemetric-api
-    spec:
-      containers:
-        - name: api
-          image: ghcr.io/<your-org>/pilemetric-api:latest
-          ports:
-            - containerPort: 8080
-          env:
-            - name: PORT
-              value: "8080"
-            - name: NODE_ENV
-              value: "production"
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: pilemetric-secrets
-                  key: DATABASE_URL
-            - name: GOOGLE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: pilemetric-secrets
-                  key: GOOGLE_CLIENT_ID
-            - name: GOOGLE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: pilemetric-secrets
-                  key: GOOGLE_CLIENT_SECRET
-            - name: SESSION_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: pilemetric-secrets
-                  key: SESSION_SECRET
-            - name: WEBODM_LIGHTNING_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pilemetric-secrets
-                  key: WEBODM_LIGHTNING_TOKEN
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
-            limits:
-              memory: "2Gi"
-              cpu: "1000m"
-          livenessProbe:
-            httpGet:
-              path: /api/healthz
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 30
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /api/healthz
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
-```
-
-**`k8s/api-service.yaml`**
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: pilemetric-api-svc
-  namespace: pilemetric
-spec:
-  selector:
-    app: pilemetric-api
-  ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
-```
-
-**`k8s/web-deployment.yaml`**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: pilemetric-web
-  namespace: pilemetric
-  labels:
-    app: pilemetric-web
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: pilemetric-web
-  template:
-    metadata:
-      labels:
-        app: pilemetric-web
-    spec:
-      containers:
-        - name: web
-          image: ghcr.io/<your-org>/pilemetric-web:latest
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "50m"
-            limits:
-              memory: "128Mi"
-              cpu: "200m"
-```
-
-**`k8s/web-service.yaml`**
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: pilemetric-web-svc
-  namespace: pilemetric
-spec:
-  selector:
-    app: pilemetric-web
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-```
-
-**`k8s/ingress.yaml`** (requires nginx-ingress-controller or similar)
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: pilemetric-ingress
-  namespace: pilemetric
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - your-domain.com
-      secretName: pilemetric-tls
-  rules:
-    - host: your-domain.com
-      http:
-        paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: pilemetric-api-svc
-                port:
-                  number: 8080
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: pilemetric-web-svc
-                port:
-                  number: 80
-```
-
-### 10.6 Apply to cluster
-
-```bash
-# Create namespace
-kubectl apply -f k8s/namespace.yaml
-
-# Apply secrets (do NOT commit this file to git)
-kubectl apply -f k8s/secrets.yaml
-
-# Push DB schema (one-time, from your local machine with DB access)
-DATABASE_URL=<prod_db_url> pnpm --filter @workspace/db run push
-
-# Deploy everything
-kubectl apply -f k8s/api-deployment.yaml
-kubectl apply -f k8s/api-service.yaml
-kubectl apply -f k8s/web-deployment.yaml
-kubectl apply -f k8s/web-service.yaml
-kubectl apply -f k8s/ingress.yaml
-
-# Verify pods are running
-kubectl get pods -n pilemetric
-kubectl logs -n pilemetric -l app=pilemetric-api --tail=50
-```
-
-### 10.7 Update to a new version
-
-```bash
-# Build new images with new tag
-export TAG=$(git rev-parse --short HEAD)
-docker build ... -t ${REGISTRY}/pilemetric-api:${TAG} .
-docker push ${REGISTRY}/pilemetric-api:${TAG}
-
-# Rolling update (zero downtime)
-kubectl set image deployment/pilemetric-api \
-  api=${REGISTRY}/pilemetric-api:${TAG} \
-  -n pilemetric
-
-kubectl rollout status deployment/pilemetric-api -n pilemetric
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
 ```
 
 ---
 
-## 11. Deploy — Option D: Rumahweb cPanel Hosting
+### 8.6 Jalankan dengan Docker
 
-Rumahweb adalah penyedia hosting Indonesia yang menggunakan cPanel. Panduan ini menggunakan Bahasa Inggris agar konsisten dengan seluruh dokumen, namun mencakup semua langkah yang berlaku khusus untuk lingkungan Rumahweb.
+```bash
+# Build dan jalankan semua service
+docker compose up -d --build
 
-### Important notes before you start
+# Push skema database (pertama kali)
+docker compose exec api pnpm --filter @workspace/db run push
 
-| Constraint | Detail |
-|---|---|
-| **Node.js support** | Only available on **Business** plan or higher. Shared Starter/Personal plans do NOT support Node.js. Verify your plan at cPanel → Software → **Setup Node.js App**. |
-| **No PostgreSQL** | Rumahweb cPanel provides only MySQL. PileMetric requires PostgreSQL. You must use an **external** free PostgreSQL provider (Neon.tech is recommended). |
-| **Memory limit** | Shared hosting memory is typically 256–512 MB. GeoTIFF parsing peaks at ~800 MB RAM. If the API crashes on large files, you need a VPS instead. |
-| **Upload size** | Apache default is 128 MB. You must raise this in `.htaccess`. |
-| **API subdomain** | The API server runs on a subdomain (e.g. `api.yourdomain.com`) because cPanel Passenger apps are bound to a domain/subdomain, not a path. |
+# Seed akun superadmin (pertama kali)
+docker compose exec api pnpm --filter @workspace/scripts run seed-superadmin
 
-### Architecture on Rumahweb
+# Lihat log API
+docker compose logs -f api
 
-```
-Browser
-  │
-  ├─── https://yourdomain.com/       → Apache → public_html/ (static frontend)
-  │
-  └─── https://api.yourdomain.com/api/  → Apache → Passenger → Node.js (API server)
-                                                         │
-                                              PostgreSQL on Neon.tech (external)
+# Restart service API
+docker compose restart api
 ```
 
 ---
 
-### 11.1 Set up external PostgreSQL (Neon.tech)
+### 8.7 Autostart Docker saat booting
 
-Neon provides a free PostgreSQL 16 database accessible from any host.
+Container dengan `restart: always` sudah otomatis restart. Pastikan Docker daemon aktif:
 
-1. Go to https://neon.tech → **Sign Up** (free)
-2. Click **New Project** → name it `pilemetric` → region: `Asia Pacific (Singapore)` (closest to Indonesian servers)
-3. After creation, copy the **Connection String** — it looks like:
-   ```
-   postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require
-   ```
-4. Save this as your `DATABASE_URL`
-
-**Push the schema from your local machine:**
 ```bash
-DATABASE_URL="postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require" \
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+---
+
+### 8.8 Update aplikasi (Docker)
+
+```bash
+cd /var/www/pilemetric
+git pull origin main
+docker compose up -d --build
+docker compose exec api pnpm --filter @workspace/db run push
+```
+
+---
+
+## 9. Deploy — Rumahweb cPanel
+
+> **Catatan:** PileMetric hanya bisa berjalan di **Rumahweb VPS** atau paket hosting **Business ke atas** yang mendukung Node.js. Paket shared hosting biasa tidak didukung karena tidak ada akses SSH dan Node.js.
+>
+> Jika menggunakan **Rumahweb VPS**, ikuti panduan [Deploy — VM/VPS Linux](#7-deploy--vm--vps-linux-debianubuntu).
+
+---
+
+### 9.1 Setup PostgreSQL eksternal (Neon.tech)
+
+Rumahweb cPanel tidak menyediakan PostgreSQL. Gunakan Neon.tech (gratis):
+
+1. Daftar di https://neon.tech
+2. Buat project baru → region: **Asia Pacific (Singapore)**
+3. Salin **Connection String**, contoh:
+
+```
+postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require
+```
+
+4. Push skema dari komputer lokal:
+
+```bash
+DATABASE_URL="postgresql://pilemetric_owner:password@ep-xxx.neon.tech/pilemetric?sslmode=require" \
   pnpm --filter @workspace/db run push
 ```
 
----
+5. Seed superadmin dari komputer lokal:
 
-### 11.2 Create a subdomain for the API in cPanel
-
-1. Log in to cPanel → **Domains** → **Subdomains**
-2. Create subdomain: `api`
-3. Domain: `yourdomain.com`
-4. Document Root: leave as `api.yourdomain.com` (cPanel sets this automatically)
-5. Click **Create**
-
-You now have `api.yourdomain.com` pointing to a folder inside your account.
-
----
-
-### 11.3 Set up Node.js App in cPanel
-
-1. cPanel → **Software** → **Setup Node.js App**
-2. Click **Create Application**
-3. Fill in:
-
-   | Field | Value |
-   |---|---|
-   | Node.js version | 20.x (choose the highest 20.x available) |
-   | Application mode | Production |
-   | Application root | `api.yourdomain.com` (or any folder name — this is where code is stored) |
-   | Application URL | `api.yourdomain.com` |
-   | Application startup file | `dist/index.mjs` |
-
-4. Click **Create**
-5. cPanel shows you the **virtual environment path** and a button **Run NPM Install** — note both
-
----
-
-### 11.4 File .env untuk Rumahweb
-
-Karena Rumahweb cPanel **tidak membaca file `.env`** secara otomatis, semua variabel harus dimasukkan melalui antarmuka **Setup Node.js App** di cPanel.
-
-Berikut adalah nilai lengkap semua variabel yang dibutuhkan:
-
-```env
-# ── Database (gunakan Neon.tech — PostgreSQL eksternal) ──────────
-DATABASE_URL=postgresql://pilemetric_owner:password@ep-xxx.ap-southeast-1.aws.neon.tech/pilemetric?sslmode=require
-
-# ── Google OAuth 2.0 ─────────────────────────────────────────────
-GOOGLE_CLIENT_ID=xxxxxxxxxxxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# URL callback harus mengarah ke subdomain API Anda
-GOOGLE_REDIRECT_URI=https://api.yourdomain.com/api/auth/google/callback
-FRONTEND_URL=https://yourdomain.com
-
-# ── Auth / Session ────────────────────────────────────────────────
-# Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-SESSION_SECRET=ganti_dengan_string_acak_minimal_64_karakter
-
-# ── WebODM Lightning ─────────────────────────────────────────────
-WEBODM_LIGHTNING_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-
-# ── Server ───────────────────────────────────────────────────────
-PORT=3000
-NODE_ENV=production
-LOG_LEVEL=info
+```bash
+DATABASE_URL="postgresql://pilemetric_owner:password@ep-xxx.neon.tech/pilemetric?sslmode=require" \
+  pnpm --filter @workspace/scripts run seed-superadmin
 ```
 
-> **Catatan PORT:** Di Rumahweb cPanel Passenger, gunakan `PORT=3000`. Passenger meneruskan traffic dari subdomain `api.yourdomain.com` ke port ini secara internal.
+---
 
-Cara memasukkan ke cPanel — masih di antarmuka **Setup Node.js App**, scroll ke **Environment Variables** dan tambahkan satu per satu:
+### 9.2 Buat subdomain untuk API
+
+1. Login cPanel → **Domains** → **Subdomains**
+2. Buat subdomain: `api` → domain: `yourdomain.com`
+3. Klik **Create**
+
+Hasil: `api.yourdomain.com` tersedia untuk Node.js app.
+
+---
+
+### 9.3 Setup Node.js App di cPanel
+
+1. cPanel → **Software** → **Setup Node.js App** → **Create Application**
+2. Isi form:
+
+| Field | Nilai |
+|---|---|
+| Node.js version | `20.x` |
+| Application mode | `Production` |
+| Application root | `api.yourdomain.com` |
+| Application URL | `api.yourdomain.com` |
+| Application startup file | `dist/index.mjs` |
+
+3. Klik **Create**
+
+---
+
+### 9.4 Set variabel .env di cPanel
+
+Di antarmuka **Setup Node.js App**, scroll ke bagian **Environment Variables** dan tambahkan setiap baris berikut satu per satu, lalu klik **Save**:
 
 | Name | Value |
 |---|---|
-| `PORT` | `3000` (Passenger uses this port internally — do not change) |
+| `PORT` | `3000` |
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | `postgresql://...neon.tech/pilemetric?sslmode=require` |
-| `GOOGLE_CLIENT_ID` | `xxx.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxx` |
+| `GOOGLE_CLIENT_ID` | `xxxxxxxxxxxx.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
 | `GOOGLE_REDIRECT_URI` | `https://api.yourdomain.com/api/auth/google/callback` |
 | `FRONTEND_URL` | `https://yourdomain.com` |
-| `SESSION_SECRET` | (64-char random string — lihat generate command di atas) |
-| `WEBODM_LIGHTNING_TOKEN` | Your WebODM Lightning API token |
+| `SESSION_SECRET` | (generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
+| `WEBODM_LIGHTNING_TOKEN` | token dari webodm.net |
 | `LOG_LEVEL` | `info` |
 
-Click **Save** after adding all variables.
+> **Catatan PORT:** Di Rumahweb Passenger gunakan `PORT=3000`, bukan `8080`.
 
 ---
 
-### 11.5 Build the project locally and prepare the API bundle
+### 9.5 Build dan upload file
 
-On your **local machine** (not on the server), run:
+Di komputer lokal, build:
 
+**API server:**
 ```bash
-# Build the API server
-NODE_ENV=production pnpm --filter @workspace/api-server run build
+pnpm --filter @workspace/api-server run build
 ```
 
-This produces `artifacts/api-server/dist/index.mjs` — a single bundled file with no `node_modules` needed.
-
----
-
-### 11.6 Build the frontend locally
-
-The frontend must be built with `VITE_API_URL` pointing to your API subdomain, because on Rumahweb the frontend and API are on different domains:
-
+**Frontend** (arahkan ke subdomain API):
 ```bash
-BASE_PATH=/ \
-VITE_API_URL=https://api.yourdomain.com/api \
-pnpm --filter @workspace/stockpile run build
+BASE_PATH=/ VITE_API_URL=https://api.yourdomain.com/api \
+  pnpm --filter @workspace/stockpile run build
 ```
 
-Output: `artifacts/stockpile/dist/public/` — ready to upload.
+---
+
+### 9.6 Upload via cPanel File Manager
+
+**Upload frontend:**
+1. cPanel → **File Manager** → buka folder `public_html/`
+2. Hapus file placeholder default
+3. Upload semua isi folder `artifacts/stockpile/dist/public/`
+
+**Upload API:**
+1. cPanel → **File Manager** → buka folder `api.yourdomain.com/`
+2. Buat subfolder `dist/`
+3. Upload file `artifacts/api-server/dist/index.mjs` ke dalam `dist/`
 
 ---
 
-### 11.7 Upload the frontend via cPanel File Manager
+### 9.7 Buat file .htaccess
 
-1. cPanel → **Files** → **File Manager**
-2. Navigate to `public_html/`
-3. Delete any default placeholder files (`index.html`, `cgi-bin/`, etc.)
-4. Click **Upload** → upload the entire contents of `artifacts/stockpile/dist/public/`
+**Untuk `public_html/.htaccess`** (SPA routing):
 
-   **Directory structure inside `public_html/` must look like:**
-   ```
-   public_html/
-   ├── index.html
-   ├── assets/
-   │   ├── index-xxxxx.js
-   │   └── index-xxxxx.css
-   └── favicon.ico
-   ```
+```apache
+Options -Indexes
 
-   > If you have many files, zip first: `cd artifacts/stockpile/dist/public && zip -r ../frontend.zip .` then upload and extract in File Manager.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
 
-5. Create a `.htaccess` file in `public_html/` with this content:
+LimitRequestBody 524288000
+```
 
-   ```apache
-   Options -Indexes
+**Untuk `api.yourdomain.com/.htaccess`** (Passenger):
 
-   # SPA routing — send all non-file requests to index.html
-   <IfModule mod_rewrite.c>
-     RewriteEngine On
-     RewriteBase /
-     RewriteRule ^index\.html$ - [L]
-     RewriteCond %{REQUEST_FILENAME} !-f
-     RewriteCond %{REQUEST_FILENAME} !-d
-     RewriteRule . /index.html [L]
-   </IfModule>
-
-   # Increase upload size for photo batches
-   <IfModule mod_php.c>
-     php_value upload_max_filesize 500M
-     php_value post_max_size 500M
-   </IfModule>
-
-   LimitRequestBody 524288000
-
-   # Cache static assets
-   <IfModule mod_expires.c>
-     ExpiresActive On
-     ExpiresByType text/css "access plus 1 year"
-     ExpiresByType application/javascript "access plus 1 year"
-     ExpiresByType image/png "access plus 1 month"
-     ExpiresByType image/jpeg "access plus 1 month"
-   </IfModule>
-   ```
+```apache
+LimitRequestBody 524288000
+PassengerEnabled On
+PassengerAppType node
+PassengerStartupFile dist/index.mjs
+```
 
 ---
 
-### 11.8 Upload the API server via cPanel File Manager
+### 9.8 Start aplikasi dan aktifkan SSL
 
-1. cPanel → **File Manager**
-2. Navigate to the **Application root** folder you set in step 11.3 (e.g. `api.yourdomain.com/`)
-3. Upload the file `artifacts/api-server/dist/index.mjs`
+1. cPanel → **Setup Node.js App** → klik **Restart** pada aplikasi Anda
+2. cPanel → **Security** → **SSL/TLS Status** → klik **Run AutoSSL**
+3. Test:
 
-   Final structure:
-   ```
-   api.yourdomain.com/
-   └── dist/
-       └── index.mjs
-   ```
-
-4. Also create a `.htaccess` file in the `api.yourdomain.com/` root:
-
-   ```apache
-   # Increase body size for image batch uploads
-   LimitRequestBody 524288000
-
-   # Let Passenger handle everything
-   PassengerEnabled On
-   PassengerAppType node
-   PassengerStartupFile dist/index.mjs
-   ```
-
----
-
-### 11.9 Start / restart the Node.js App
-
-1. cPanel → **Setup Node.js App**
-2. Find your app in the list
-3. Click **Restart** (or **Start** if it was never started)
-4. Wait 10–15 seconds, then click **Open** to verify the startup file path is correct
-
-Test the API is alive:
 ```bash
 curl https://api.yourdomain.com/api/healthz
 # Expected: {"status":"ok"}
 ```
 
-If you get a 500 error, check the application log inside cPanel → **Setup Node.js App** → view the error log link shown in the app row.
+---
+
+### 9.9 Konfigurasi Google OAuth untuk Rumahweb
+
+Di Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID Anda:
+
+- **Authorized redirect URIs** → tambahkan: `https://api.yourdomain.com/api/auth/google/callback`
+- **Authorized JavaScript origins** → tambahkan: `https://yourdomain.com`
 
 ---
 
-### 11.10 Enable SSL (HTTPS) for both domains
+### 9.10 Update aplikasi (Rumahweb)
 
-1. cPanel → **Security** → **SSL/TLS Status**
-2. Both `yourdomain.com` and `api.yourdomain.com` should appear in the list
-3. Click **Run AutoSSL** — Rumahweb uses Let's Encrypt via AutoSSL at no cost
-4. Wait 2–5 minutes, then refresh — both domains should show a green padlock
+```bash
+# 1. Rebuild API
+pnpm --filter @workspace/api-server run build
+# Upload api-server/dist/index.mjs → api.yourdomain.com/dist/ via File Manager
 
-> If AutoSSL fails for `api.yourdomain.com`, go to cPanel → **SSL/TLS** → **Install and Manage SSL** and issue a certificate manually for that subdomain.
+# 2. Rebuild frontend
+BASE_PATH=/ VITE_API_URL=https://api.yourdomain.com/api \
+  pnpm --filter @workspace/stockpile run build
+# Upload isi stockpile/dist/public/ → public_html/ via File Manager
 
----
-
-### 11.11 Configure Google OAuth for the production domain
-
-1. Log in to https://console.cloud.google.com → APIs & Services → Credentials
-2. Open your OAuth 2.0 Client ID (Web application)
-3. Under **Authorized redirect URIs** add:
-   `https://api.yourdomain.com/api/auth/google/callback`
-4. Under **Authorized JavaScript origins** add:
-   `https://yourdomain.com`
-5. Set `GOOGLE_REDIRECT_URI` in cPanel Node.js App → Environment Variables:
-   ```
-   GOOGLE_REDIRECT_URI=https://api.yourdomain.com/api/auth/google/callback
-   FRONTEND_URL=https://yourdomain.com
-   ```
-6. Rebuild and re-upload the frontend:
-   ```bash
-   BASE_PATH=/ \
-   VITE_API_URL=https://api.yourdomain.com/api \
-   pnpm --filter @workspace/stockpile run build
-   ```
+# 3. Restart di cPanel → Setup Node.js App → Restart
+```
 
 ---
 
-### 11.12 End-to-end deployment checklist
+## 10. Deploy — Web Hosting (Vercel + Railway)
 
-| Step | How to verify |
+Pilihan termudah: frontend ke Vercel, API ke Railway.
+
+---
+
+### 10.1 Deploy API ke Railway
+
+1. https://railway.app → **New Project** → **Deploy from GitHub**
+2. Set **Start command**: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
+3. Set **Build command**: `pnpm install && pnpm --filter @workspace/api-server run build`
+4. Tambah **PostgreSQL plugin** dari Railway dashboard
+5. Set environment variables di Railway:
+
+| Name | Value |
 |---|---|
-| Frontend loads | Open `https://yourdomain.com` — dashboard appears |
-| API responds | `curl https://api.yourdomain.com/api/healthz` → `{"status":"ok"}` |
-| Database connected | Admin login succeeds (returns JWT token) |
-| Google auth works | Click Sign In → Google consent screen appears → login completes → redirected to dashboard |
-| File upload works | Create a new job, upload 3+ photos → status changes to `queued` |
-| NodeODM connected | Job status progresses from `queued` → `running` → `completed` |
-| Volume calculated | After completion, draw polygon → volume appears in m³ |
+| `DATABASE_URL` | (dari Railway PostgreSQL plugin) |
+| `GOOGLE_CLIENT_ID` | `xxxxxxxxxxxx.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| `GOOGLE_REDIRECT_URI` | `https://pilemetric-api.up.railway.app/api/auth/google/callback` |
+| `FRONTEND_URL` | `https://pilemetric.vercel.app` |
+| `SESSION_SECRET` | (string acak 64 karakter) |
+| `WEBODM_LIGHTNING_TOKEN` | token dari webodm.net |
+| `PORT` | `8080` |
+| `NODE_ENV` | `production` |
 
----
+6. Push skema database setelah deploy pertama:
 
-### 11.13 Updating the deployment
-
-Every time you push new code to GitHub, deploy manually:
-
-**Update the API:**
 ```bash
-# 1. Rebuild locally
-NODE_ENV=production pnpm --filter @workspace/api-server run build
-
-# 2. Upload artifacts/api-server/dist/index.mjs via cPanel File Manager
-#    (overwrite the existing file in api.yourdomain.com/dist/)
-
-# 3. Restart the Node.js App in cPanel → Setup Node.js App → Restart
-```
-
-**Update the frontend:**
-```bash
-# 1. Rebuild locally
-BASE_PATH=/ \
-VITE_API_URL=https://api.yourdomain.com/api \
-pnpm --filter @workspace/stockpile run build
-
-# 2. Upload contents of artifacts/stockpile/dist/public/ to public_html/
-#    (overwrite all files — keep the .htaccess you created)
-```
-
-**Schema changes:**
-```bash
-DATABASE_URL="postgresql://...neon.tech/pilemetric?sslmode=require" \
-  pnpm --filter @workspace/db run push
+DATABASE_URL=<railway_url> pnpm --filter @workspace/db run push
+DATABASE_URL=<railway_url> pnpm --filter @workspace/scripts run seed-superadmin
 ```
 
 ---
 
-### 11.14 FTP upload alternative (optional)
+### 10.2 Deploy frontend ke Vercel
 
-If File Manager is slow for large uploads, use an FTP client:
+1. https://vercel.com → **New Project** → Import dari GitHub
+2. **Root Directory**: `artifacts/stockpile`
+3. **Build Command**: `cd ../.. && pnpm install && BASE_PATH=/ pnpm --filter @workspace/stockpile run build`
+4. **Output Directory**: `dist/public`
+5. Set environment variables:
 
-1. cPanel → **FTP Accounts** → Create a dedicated FTP account
-2. Use [FileZilla](https://filezilla-project.org/) (free):
-   - Host: `ftp.yourdomain.com`
-   - Username: the FTP account you created
-   - Password: as set
-   - Port: `21`
-3. Upload `public_html/` contents from `artifacts/stockpile/dist/public/`
-4. Upload `dist/index.mjs` to `api.yourdomain.com/dist/`
+| Name | Value |
+|---|---|
+| `VITE_API_URL` | `https://pilemetric-api.up.railway.app` |
+| `BASE_PATH` | `/` |
 
----
+6. Buat file `artifacts/stockpile/vercel.json` untuk proxy `/api`:
 
-## 12. Testing & Smoke Checks
-
-### 12.1 API health check
-
-```bash
-curl -s https://your-domain.com/api/healthz
-# Expected: {"status":"ok"}
-```
-
-### 12.2 Authentication flow
-
-1. Open https://your-domain.com in a browser
-2. Click **Sign In** — you are redirected to the Google consent screen
-3. Sign in with your Google account
-4. After sign-in, you are redirected back to the dashboard
-
-For local-admin login test:
-```bash
-curl -s -X POST https://your-domain.com/api/admin/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"superadmin","password":"D1g1t3ch"}' | head -c 200
-# Expected: {"token":"eyJ...","profile":{"id":"...","role":"super_admin"}}
-```
-
-### 12.3 Database connectivity
-
-```bash
-curl -s -X POST https://your-domain.com/api/admin/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"superadmin","password":"D1g1t3ch"}' \
-  | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{ const t=JSON.parse(d).token; require('child_process').execSync(\`curl -s -H 'Authorization: Bearer ${t}' https://your-domain.com/api/jobs\`) })"
-# Expected: [] or a JSON array of jobs — confirms DB connectivity
-```
-
-### 12.4 WebODM token check
-
-Log in to the app as super_admin → Settings → WebODM Settings. The token status should show green. Or test directly:
-
-```bash
-curl -s "https://spark1.webodm.net/api/projects/1/?token=YOUR_TOKEN"
-# Expected: JSON with project data (not 401)
-```
-
-### 12.5 Image upload test
-
-1. Log in to the app
-2. Click **New Job**
-3. Upload 3+ JPEG photos taken with GPS-enabled camera/phone
-4. Submit the job
-5. Status should progress: `queued → running → completed`
-6. After completion, click **Edit Polygon** and draw a boundary
-7. Volume should appear in m³ (not 0 and not 999999)
-
----
-
-## 13. Troubleshooting
-
-### API server does not start
-
-**Symptom:** `Error: PORT environment variable is required`
-**Fix:** Ensure `PORT` is set in the environment before starting.
-
-```bash
-# Check env
-echo $PORT
-# Set if missing
-export PORT=8080
+```json
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://pilemetric-api.up.railway.app/api/:path*"
+    }
+  ]
+}
 ```
 
 ---
 
-**Symptom:** `Error: GOOGLE_CLIENT_ID is not set` or `invalid_client` errors from Google
-**Fix:** Ensure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in your environment. Verify that the redirect URI configured in Google Cloud Console exactly matches the `GOOGLE_REDIRECT_URI` env var (or the auto-detected value `<your-api-domain>/api/auth/google/callback`).
+### 10.3 Konfigurasi Google OAuth untuk Vercel + Railway
+
+Di Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID:
+
+- **Authorized redirect URIs**: `https://pilemetric-api.up.railway.app/api/auth/google/callback`
+- **Authorized JavaScript origins**: `https://pilemetric.vercel.app`
 
 ---
 
-**Symptom:** `FATAL: database "pilemetric" does not exist`
-**Fix:** Run the database creation commands from [Section 5](#5-database-setup). Then run schema push.
+## 11. Troubleshooting
 
 ---
 
-**Symptom:** `column "dsm_cache_b64" does not exist`
-**Fix:** Schema push was not run after a code update. Run:
-```bash
-pnpm --filter @workspace/db run push
+### API server tidak mau start
+
+**Error:** `Error: PORT environment variable is required`
+**Solusi:** Pastikan `PORT=8080` ada di file `.env`.
+
+---
+
+**Error:** `FATAL: database "pilemetric" does not exist`
+**Solusi:** Jalankan perintah CREATE DATABASE di [Section 4](#4-setup-database), kemudian `pnpm --filter @workspace/db run push`.
+
+---
+
+**Error:** `permission denied for schema public`
+**Solusi:**
+```sql
+GRANT ALL ON SCHEMA public TO pilemetric_user;
 ```
 
 ---
 
-### Volume calculation is wrong / blown up
-
-**Symptom:** Volume shows a very large number (e.g. 812 m³ for a small polygon)
-**Cause:** DSM file was not downloaded before NodeODM cleared its assets, so the geometric fallback was used.
-**Fix:**
-1. Download `odm_dem/dsm.tif` and `odm_dem/dtm.tif` from the NodeODM output zip
-2. Log in as super_admin
-3. Call `POST /api/jobs/:id/recalculate-dsm` with a Bearer token — this uses the cached bytes
-
-For new jobs this should not happen — DSM bytes are now cached immediately after processing.
+**Error:** `pnpm: command not found` di systemd
+**Solusi:** Cek path pnpm dengan `which pnpm`, sesuaikan di `ExecStart` pada file service.
 
 ---
 
-### Frontend shows blank page / 404 in production
+### Nginx 502 Bad Gateway
 
-**Symptom:** Opening the app URL shows a blank white page or nginx 404
-**Fix 1:** Check that the frontend was built:
+API server tidak berjalan. Cek:
 ```bash
-ls artifacts/stockpile/dist/public/index.html
-```
-If missing, rebuild:
-```bash
-BASE_PATH=/ pnpm --filter @workspace/stockpile run build
+sudo systemctl status pilemetric-api
+sudo journalctl -u pilemetric-api -n 50
 ```
 
-**Fix 2:** Nginx root path must point to `dist/public/`, not `dist/`:
+---
+
+### Upload foto gagal (413 Request Entity Too Large)
+
+Tambahkan di konfigurasi Nginx:
 ```nginx
-root /var/www/pilemetric/artifacts/stockpile/dist/public;
+client_max_body_size 500M;
 ```
+Kemudian: `sudo systemctl reload nginx`
 
 ---
 
-### `/api` routes return 404 from the browser
+### Google login tidak berfungsi (`redirect_uri_mismatch`)
 
-**Symptom:** API calls from the browser return HTML 404 (nginx default page)
-**Cause:** Nginx proxy config is missing or misconfigured.
-**Fix:** Check that the nginx `location /api/` block has `proxy_pass http://127.0.0.1:8080;` and that PM2 shows the API as **online**:
-```bash
-pm2 status
-pm2 logs pilemetric-api --lines 50
-```
+Nilai `GOOGLE_REDIRECT_URI` di `.env` harus **sama persis** (termasuk huruf besar/kecil dan tanpa trailing slash) dengan yang didaftarkan di Google Cloud Console.
 
 ---
 
-### Kubernetes pods crash-looping
+### Rumahweb — Setup Node.js App tidak muncul di cPanel
 
-**Symptom:** `kubectl get pods -n pilemetric` shows `CrashLoopBackOff`
-**Fix:**
-```bash
-kubectl logs -n pilemetric -l app=pilemetric-api --previous
-```
-Common cause: missing environment variable in the Secret. Verify all keys in `k8s/secrets.yaml` match what the API expects.
+Paket hosting Anda tidak mendukung Node.js. Upgrade ke paket **Business** atau gunakan **Rumahweb VPS**.
 
 ---
 
-### NodeODM jobs stuck at "queued" forever
+### Rumahweb — API mengembalikan 503
 
-**Symptom:** Jobs submitted but never start processing
-**Cause 1:** `WEBODM_LIGHTNING_TOKEN` is invalid or expired.
-**Cause 2:** spark1.webodm.net is unavailable or rate-limiting.
-**Fix:**
-```bash
-# Test the token
-curl -s "https://spark1.webodm.net/api/projects/1/?token=YOUR_TOKEN"
-```
-If this returns 401, the token is wrong. Get a fresh token from https://webodm.net/lightning → Account.
+1. cPanel → **Setup Node.js App** → klik **Restart**
+2. Pastikan file `dist/index.mjs` ada di folder `api.yourdomain.com/dist/`
+3. Periksa semua environment variable sudah terisi → **Save** → **Restart**
 
 ---
 
-### DSM download fails on polygon edit (status 404)
+### Rumahweb — Koneksi database ditolak dari Neon
 
-**Symptom:** Editing the polygon gives wrong/geometric estimate volume
-**Cause:** NodeODM assets expired. spark1.webodm.net stores assets to S3 after completion. The DB cache (added in the current version) prevents this for new jobs.
-**Fix for old jobs:** Provide the `dsm.tif` + `dtm.tif` files from the NodeODM output zip and use the recalculate endpoint:
-```bash
-# Inject DSM bytes into DB, then call:
-POST /api/jobs/<id>/recalculate-dsm
-Authorization: Bearer <admin-token>
-```
-
----
-
-### Google OAuth "redirect_uri_mismatch" error
-
-**Symptom:** Google returns `redirect_uri_mismatch` after the user consents
-**Fix:** Open Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client ID. The URI under **Authorized redirect URIs** must exactly match the value the server sends. If you set `GOOGLE_REDIRECT_URI`, use that exact value. Otherwise, the server auto-detects it as `<request-origin>/api/auth/google/callback` — add that URL to the Google Console. Remember there is no trailing slash.
-
----
-
-### Rumahweb — "Setup Node.js App" not visible in cPanel
-
-**Symptom:** cPanel Software section does not show "Setup Node.js App"
-**Cause:** Your current plan does not include Node.js support
-**Fix:** Upgrade to Rumahweb **Business** hosting or higher. Alternatively, use Rumahweb **VPS** and follow the [VM Instance guide](#9-deploy--option-b-vm-instance-ubuntu--nginx--pm2) instead.
-
----
-
-### Rumahweb — API returns 503 or "Application Error"
-
-**Symptom:** `https://api.yourdomain.com/api/healthz` returns 503 Service Unavailable or a cPanel error page
-**Cause 1:** The Node.js app is not started.
-**Fix:** cPanel → Setup Node.js App → click **Restart**.
-
-**Cause 2:** `dist/index.mjs` is missing or in the wrong folder.
-**Fix:** Confirm the file exists at `api.yourdomain.com/dist/index.mjs` inside File Manager. The startup file configured in cPanel must match exactly.
-
-**Cause 3:** A required environment variable is missing (e.g. `DATABASE_URL`).
-**Fix:** cPanel → Setup Node.js App → edit the app → check all environment variables are set → Save → Restart.
-
----
-
-### Rumahweb — Database connection refused from Neon
-
-**Symptom:** API starts but crashes with `connection refused` or `SSL required`
-**Cause:** Neon requires SSL. The `sslmode=require` parameter must be in the connection string.
-**Fix:** Ensure `DATABASE_URL` ends with `?sslmode=require`:
+Pastikan `DATABASE_URL` diakhiri dengan `?sslmode=require`:
 ```
 postgresql://user:pass@ep-xxx.neon.tech/pilemetric?sslmode=require
 ```
 
 ---
 
-### Rumahweb — Frontend shows blank page after upload
+### Jobs stuck di status "queued" selamanya
 
-**Symptom:** `https://yourdomain.com` shows a blank white page
-**Cause 1:** `index.html` is not in `public_html/` directly — it may be in a subfolder.
-**Fix:** In File Manager, confirm `public_html/index.html` exists. If files are inside `public_html/dist/`, move them up one level.
-
-**Cause 2:** Missing `.htaccess` for SPA routing — refreshing any page other than `/` gives 404.
-**Fix:** Create the `.htaccess` file from [step 11.7](#117-upload-the-frontend-via-cpanel-file-manager) in `public_html/`.
+Token WebODM tidak valid atau kadaluarsa. Test:
+```bash
+curl -s "https://spark1.webodm.net/api/projects/1/?token=YOUR_TOKEN"
+```
+Jika hasilnya 401, perbarui token di https://webodm.net/lightning → Account.
 
 ---
 
-### Rumahweb — Image uploads fail with 413 Request Entity Too Large
+### Volume tidak terhitung / nilai sangat besar
 
-**Symptom:** Uploading photos returns error 413
-**Fix:** The `LimitRequestBody` line in `.htaccess` must be present:
-```apache
-LimitRequestBody 524288000
+DSM file tidak berhasil di-download sebelum NodeODM menghapus asetnya. Untuk job lama:
+```bash
+POST /api/jobs/<id>/recalculate-dsm
+Authorization: Bearer <admin-token>
 ```
-Also check cPanel → **Select PHP Version** → PHP options → ensure `upload_max_filesize` and `post_max_size` are set to `500M`.
-
----
-
-### Rumahweb — API crashes on large GeoTIFF files (out of memory)
-
-**Symptom:** Volume calculation works for small jobs but crashes for large ones; cPanel error log shows `JavaScript heap out of memory`
-**Cause:** Shared hosting RAM is too low for large DSM files.
-**Fix options:**
-1. Upgrade to Rumahweb VPS (minimum 4 GB RAM recommended)
-2. Or use the Node.js app startup file with increased heap:
-   - Change startup file to a wrapper script `start.sh` with:
-     ```bash
-     #!/bin/bash
-     node --max-old-space-size=2048 --enable-source-maps dist/index.mjs
-     ```
-   - Make it executable and set it as the Passenger startup file
-
----
-
-### Rumahweb — CORS error in browser console
-
-**Symptom:** Browser shows `Access to fetch at 'https://api.yourdomain.com' from origin 'https://yourdomain.com' has been blocked by CORS policy`
-**Cause:** The API server CORS config does not include your production frontend domain.
-**Fix:** In cPanel → Setup Node.js App, add the environment variable:
-```
-ALLOWED_ORIGINS=https://yourdomain.com
-```
-Then restart the app. (The API server reads this to configure its CORS allowed origins.)
