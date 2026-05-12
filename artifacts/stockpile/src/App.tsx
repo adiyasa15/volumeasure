@@ -22,6 +22,7 @@ import PendingApproval from "@/pages/pending-approval";
 import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
 import ExifExtractor from "@/pages/exif-extractor";
+import CctvPlanner from "@/pages/cctv-planner";
 import AuthCallback from "@/pages/auth-callback";
 import { AppLayout } from "@/components/layout";
 
@@ -68,6 +69,7 @@ function ProtectedRoutes() {
           <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/settings" component={AdminSettings} />
           <Route path="/tools/exif" component={ExifExtractor} />
+          <Route path="/tools/cctv-planner" component={CctvPlanner} />
           <Route component={NotFound} />
         </Switch>
       </AppLayout>

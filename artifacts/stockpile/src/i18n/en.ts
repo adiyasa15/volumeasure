@@ -32,6 +32,7 @@ const en = {
     measurements: "Measurements",
     newJob: "New Job",
     exifExtractor: "EXIF Extractor",
+    cctvPlanner: "CCTV Planner",
     userManagement: "User Management",
     settings: "Settings",
     superAdmin: "Super Admin",

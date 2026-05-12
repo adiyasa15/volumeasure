@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings, ScanSearch } from "lucide-react";
+import { Mountain, LayoutDashboard, FolderOpen, Plus, Menu, Users, LogOut, ShieldCheck, Settings, ScanSearch, Cctv } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useUserProfile } from "@/context/UserProfileContext";
@@ -23,6 +23,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/jobs", label: t("nav.measurements"), icon: FolderOpen },
     { href: "/jobs/new", label: t("nav.newJob"), icon: Plus },
     { href: "/tools/exif", label: t("nav.exifExtractor"), icon: ScanSearch },
+    { href: "/tools/cctv-planner", label: t("nav.cctvPlanner"), icon: Cctv },
   ];
 
   const adminNavItem = { href: "/admin/users", label: t("nav.userManagement"), icon: Users };

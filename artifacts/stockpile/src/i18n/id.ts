@@ -34,6 +34,7 @@ const id: Translations = {
     measurements: "Pengukuran",
     newJob: "Pekerjaan Baru",
     exifExtractor: "Ekstrak EXIF",
+    cctvPlanner: "CCTV Planner",
     userManagement: "Manajemen Pengguna",
     settings: "Pengaturan",
     superAdmin: "Super Admin",
