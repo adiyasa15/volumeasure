@@ -75,8 +75,11 @@ function compute(p: ComputeParams) {
   const volErr = sigZ < 5 ? "<1%" : sigZ < 15 ? "1–2%" : sigZ < 30 ? "2–5%" : ">5%";
   const bzQual = BZ >= 0.20 ? "ideal" : BZ >= 0.10 ? "cukup" : "lemah";
 
-  // Camera positions (stockpile centered in room)
-  const ox = (roomW - stockW) / 2, oy = (roomL - stockL) / 2;
+  // Camera positions (stockpile centered in room, clamped to valid range)
+  const ox = Math.max(0, (roomW - stockW) / 2);
+  const oy = Math.max(0, (roomL - stockL) / 2);
+  const clearL = (roomL - stockL) / 2;  // clearance front/back (m)
+  const clearW = (roomW - stockW) / 2;  // clearance left/right (m)
   const cams: { id: number; x: number; y: number; wall: WallSide }[] = [];
   for (let i = 0; i < nCamW; i++) cams.push({ id: cams.length + 1, x: rnd(ox + i * spacW), y: 0, wall: "front" });
   for (let i = 0; i < nCamW; i++) cams.push({ id: cams.length + 1, x: rnd(ox + i * spacW), y: roomL, wall: "back" });
@@ -96,6 +99,8 @@ function compute(p: ComputeParams) {
     actOlCamL, actOlCamW, minOlCam,
     Z: rnd(Z), BZ, conv, GSD, sigZ_mm: sigZ, pxW, pxH, pp: rnd(pp, 4),
     totPhotos, volErr, bzQual, cameras: cams, inputs: p,
+    clearL: rnd(clearL), clearW: rnd(clearW),
+    dimOk: stockL < roomL && stockW < roomW,
   };
 }
 
@@ -427,6 +432,16 @@ export default function CctvPlanner() {
   const [baseB, setBaseB]     = useState(6);
   const [activeTab, setActiveTab] = useState("top");
 
+  // Auto-clamp stock when room shrinks below it
+  const handleRoomL = (v: number) => {
+    setRoomL(v);
+    if (stockL >= v) setStockL(parseFloat(Math.max(2, v - 1).toFixed(1)));
+  };
+  const handleRoomW = (v: number) => {
+    setRoomW(v);
+    if (stockW >= v) setStockW(parseFloat(Math.max(2, v - 1).toFixed(1)));
+  };
+
   const sens = SENSORS[si];
   const r = compute({
     roomL, roomW, roomH, stockL, stockW, stockH,
@@ -435,17 +450,28 @@ export default function CctvPlanner() {
     panEff, olPhoto, olCam, baseB,
   });
 
-  const isOk    = r.actOlPhoto >= olPhoto && r.BZ >= 0.10 && r.minOlCam >= olCam;
-  const isIdeal = r.BZ >= 0.20 && isOk;
+  // Dimension validation
+  const errStockL = stockL >= roomL;
+  const errStockW = stockW >= roomW;
+  const dimError  = errStockL || errStockW;
+  // Clearance warning: if clearance < 1 m the camera FOV barely reaches stockpile edge
+  const warnClearL = !errStockL && r.clearL < 1;
+  const warnClearW = !errStockW && r.clearW < 1;
+  const clearWarn  = warnClearL || warnClearW;
+
+  const isOk    = !dimError && r.actOlPhoto >= olPhoto && r.BZ >= 0.10 && r.minOlCam >= olCam;
+  const isIdeal = !dimError && r.BZ >= 0.20 && isOk;
 
   const bannerStyle: React.CSSProperties = {
     borderRadius: 6, padding: "8px 12px", fontSize: 11, border: "1px solid",
     fontFamily: "monospace", letterSpacing: ".01em", marginBottom: 12,
-    ...(isIdeal
-      ? { background: `${C.gn}0f`, borderColor: `${C.gn}44`, color: C.gn }
-      : isOk
-        ? { background: `${C.am}0f`, borderColor: `${C.am}44`, color: C.am }
-        : { background: `${C.rd}0f`, borderColor: `${C.rd}44`, color: C.rd }),
+    ...(dimError
+      ? { background: `${C.rd}0f`, borderColor: `${C.rd}44`, color: C.rd }
+      : isIdeal
+        ? { background: `${C.gn}0f`, borderColor: `${C.gn}44`, color: C.gn }
+        : isOk
+          ? { background: `${C.am}0f`, borderColor: `${C.am}44`, color: C.am }
+          : { background: `${C.rd}0f`, borderColor: `${C.rd}44`, color: C.rd }),
   };
 
   const tabStyle = (t: string): React.CSSProperties => ({
@@ -478,15 +504,27 @@ export default function CctvPlanner() {
         <div style={{ background: C.bg2, borderRight: `1px solid ${C.bd}`, padding: "14px 12px", overflowY: "auto" }}>
 
           <Section title="Dimensi Ruangan">
-            <Field label="Panjang L" min={6} max={60} value={roomL} step={0.5} unit=" m" onChange={setRoomL}/>
-            <Field label="Lebar W" min={6} max={40} value={roomW} step={0.5} unit=" m" onChange={setRoomW}/>
+            <Field label="Panjang L" min={6} max={60} value={roomL} step={0.5} unit=" m" onChange={handleRoomL}/>
+            <Field label="Lebar W" min={6} max={40} value={roomW} step={0.5} unit=" m" onChange={handleRoomW}/>
             <Field label="Tinggi kamera H" min={2} max={10} value={roomH} step={0.1} unit=" m" onChange={setRoomH}/>
           </Section>
 
           <Section title="Dimensi Stockpile">
-            <Field label="Panjang Ls" min={2} max={30} value={stockL} step={0.5} unit=" m" onChange={setStockL}/>
-            <Field label="Lebar Ws" min={2} max={20} value={stockW} step={0.5} unit=" m" onChange={setStockW}/>
+            <Field label="Panjang Ls" min={2} max={Math.max(2, roomL - 0.5)} value={stockL} step={0.5} unit=" m" onChange={setStockL}/>
+            <Field label="Lebar Ws" min={2} max={Math.max(2, roomW - 0.5)} value={stockW} step={0.5} unit=" m" onChange={setStockW}/>
             <Field label="Tinggi Hs" min={0.5} max={6} value={stockH} step={0.1} unit=" m" onChange={setStockH}/>
+            {(errStockL || errStockW) && (
+              <div style={{ fontSize: 10, color: C.rd, fontFamily: "monospace", background: `${C.rd}0f`, border: `1px solid ${C.rd}44`, borderRadius: 5, padding: "5px 8px", marginTop: 4 }}>
+                ✗ {errStockL ? `Ls (${stockL}m) ≥ L ruangan (${roomL}m)` : ""}
+                {errStockL && errStockW ? " · " : ""}
+                {errStockW ? `Ws (${stockW}m) ≥ W ruangan (${roomW}m)` : ""}
+              </div>
+            )}
+            {clearWarn && (
+              <div style={{ fontSize: 10, color: C.am, fontFamily: "monospace", background: `${C.am}0f`, border: `1px solid ${C.am}44`, borderRadius: 5, padding: "5px 8px", marginTop: 4 }}>
+                ⚠ Clearance sempit:{warnClearL ? ` depan/belakang ${r.clearL}m` : ""}{warnClearL && warnClearW ? " ·" : ""}{warnClearW ? ` kiri/kanan ${r.clearW}m` : ""} — tambah ruangan agar kamera bisa cover stockpile
+              </div>
+            )}
           </Section>
 
           <Section title="Spesifikasi CCTV PTZ">
@@ -517,11 +555,31 @@ export default function CctvPlanner() {
 
           {/* Status banner */}
           <div style={bannerStyle}>
-            {isIdeal ? `✓ OPTIMAL — ${r.totCams} kamera | OL foto ${r.actOlPhoto}% | B/Z ${r.BZ} (ideal) | σZ ±${r.sigZ_mm}mm | GSD ${r.GSD}mm/px`
-              : isOk ? `⚠ CUKUP — ${r.totCams} kamera | B/Z ${r.BZ} | perlebar baseline untuk B/Z ideal`
-                     : `✗ PERLU PERBAIKAN — OL foto ${r.actOlPhoto}% | B/Z ${r.BZ} | OL kamera ${r.minOlCam}%`}
+            {dimError
+              ? `✗ DIMENSI TIDAK VALID — stockpile tidak boleh ≥ dimensi ruangan. Kurangi Ls/Ws atau perbesar ruangan.`
+              : isIdeal
+                ? `✓ OPTIMAL — ${r.totCams} kamera | OL foto ${r.actOlPhoto}% | B/Z ${r.BZ} (ideal) | σZ ±${r.sigZ_mm}mm | GSD ${r.GSD}mm/px`
+                : isOk
+                  ? `⚠ CUKUP — ${r.totCams} kamera | B/Z ${r.BZ} | perlebar baseline untuk B/Z ideal`
+                  : `✗ PERLU PERBAIKAN — OL foto ${r.actOlPhoto}% | B/Z ${r.BZ} | OL kamera ${r.minOlCam}%`}
           </div>
 
+          {/* Clearance advisory (only when valid + tight) */}
+          {clearWarn && (
+            <div style={{ borderRadius: 6, padding: "7px 12px", fontSize: 10, border: `1px solid ${C.am}44`, fontFamily: "monospace", color: C.am, background: `${C.am}0a`, marginBottom: 12 }}>
+              ⚠ CLEARANCE SEMPIT — {warnClearL ? `depan/belakang hanya ${r.clearL} m` : ""}{warnClearL && warnClearW ? " · " : ""}{warnClearW ? `kiri/kanan hanya ${r.clearW} m` : ""}. Kamera di dinding mungkin kesulitan meliput seluruh tepi stockpile. Disarankan clearance ≥ 1 m.
+            </div>
+          )}
+
+          {/* All calculation output — hidden when dimensions are invalid */}
+          {dimError ? (
+            <div style={{ background: C.bg2, border: `1px solid ${C.rd}44`, borderRadius: 10, padding: 32, textAlign: "center", color: C.tx3, fontFamily: "monospace" }}>
+              <div style={{ fontSize: 28, marginBottom: 12 }}>⛔</div>
+              <div style={{ fontSize: 13, color: C.rd, fontWeight: 700, marginBottom: 6 }}>Dimensi Tidak Valid</div>
+              <div style={{ fontSize: 11 }}>Panjang/lebar stockpile harus lebih kecil dari dimensi ruangan.</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>Perbesar ruangan atau kurangi ukuran stockpile di sidebar.</div>
+            </div>
+          ) : (<>
           {/* KPI grid row 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 7, marginBottom: 7 }}>
             <KCard label="Total Kamera" icon="📷" value={r.totCams} unit="unit" color={C.bl} sub={`${r.nCamL}L × ${r.nCamW}W perimeter`}/>
@@ -622,6 +680,7 @@ export default function CctvPlanner() {
               </tbody>
             </table>
           </div>
+          </>)}
 
         </div>
       </div>
