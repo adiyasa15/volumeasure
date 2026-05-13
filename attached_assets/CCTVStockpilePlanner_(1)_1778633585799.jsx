@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PHOTOGRAMMETRY ENGINE
@@ -18,19 +18,9 @@ import { useState } from "react";
 //   σZ      = d²·pixPitch / (f·B) × 1000       akurasi Z (mm)
 // ─────────────────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
-function rnd(v: number, dec = 2) { return Math.round(v * 10 ** dec) / 10 ** dec; }
+function rnd(v, dec = 2) { return Math.round(v * 10 ** dec) / 10 ** dec; }
 
-type WallSide = "front" | "back" | "left" | "right";
-
-type ComputeParams = {
-  roomL: number; roomW: number; roomH: number;
-  stockL: number; stockW: number; stockH: number;
-  fovH: number; fovV: number; tilt: number;
-  sensorW: number; sensorH: number; focalLen: number; megapix: number;
-  panEff: number; olPhoto: number; olCam: number; baseB: number;
-};
-
-function compute(p: ComputeParams) {
+function compute(p) {
   const { roomL, roomW, roomH, stockL, stockW, fovH, fovV, tilt,
     sensorW, sensorH, focalLen, megapix, panEff, olPhoto, olCam, baseB } = p;
 
@@ -47,7 +37,7 @@ function compute(p: ComputeParams) {
   const nFrames    = Math.ceil(panUsed / maxStep);
   const actStep    = nFrames > 1 ? panUsed / (nFrames - 1) : fovH;
   const actOlPhoto = Math.round((1 - actStep / fovH) * 100);
-  const wrong360   = Math.ceil(360 / maxStep);
+  const wrong360   = Math.ceil(360 / maxStep);   // nilai salah (untuk edukasi)
 
   // Step 3 — Camera layout (wall-mounted perimeter only)
   const stride  = sweepW * (1 - olCam / 100);
@@ -77,7 +67,7 @@ function compute(p: ComputeParams) {
 
   // Camera positions (stockpile centered in room)
   const ox = (roomW - stockW) / 2, oy = (roomL - stockL) / 2;
-  const cams: { id: number; x: number; y: number; wall: WallSide }[] = [];
+  const cams = [];
   for (let i = 0; i < nCamW; i++) cams.push({ id: cams.length + 1, x: rnd(ox + i * spacW), y: 0, wall: "front" });
   for (let i = 0; i < nCamW; i++) cams.push({ id: cams.length + 1, x: rnd(ox + i * spacW), y: roomL, wall: "back" });
   for (let i = 0; i < nCamL; i++) {
@@ -99,8 +89,6 @@ function compute(p: ComputeParams) {
   };
 }
 
-type R = ReturnType<typeof compute>;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // UI HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,16 +100,14 @@ const C = {
   gn: "#1fd980", am: "#f5a623", rd: "#f04040", tl: "#00c9b1", pu: "#9b6dff",
 };
 
-const qualColor = (v: number) => v >= 0.20 ? C.gn : v >= 0.10 ? C.am : C.rd;
-const olColor   = (act: number, tgt: number) => act >= tgt ? C.gn : C.rd;
+const cls = { ok: C.gn, warn: C.am, bad: C.rd, info: C.bl, pu: C.pu };
+const qualColor = (v) => v >= 0.20 ? C.gn : v >= 0.10 ? C.am : C.rd;
+const olColor   = (act, tgt) => act >= tgt ? C.gn : C.rd;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SLIDER FIELD
 // ─────────────────────────────────────────────────────────────────────────────
-function Field({ label, min, max, value, step, unit, onChange }: {
-  label: string; min: number; max: number; value: number;
-  step: number; unit: string; onChange: (v: number) => void;
-}) {
+function Field({ label, id, min, max, value, step, unit, onChange }) {
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.tx2, marginBottom: 3 }}>
@@ -140,10 +126,7 @@ function Field({ label, min, max, value, step, unit, onChange }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // KPI CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function KCard({ label, icon, value, unit, color, sub }: {
-  label: string; icon: string; value: number | string;
-  unit: string; color?: string; sub?: string;
-}) {
+function KCard({ label, icon, value, unit, color, sub }) {
   return (
     <div style={{ background: C.bg2, border: `1px solid ${C.bd}`, borderRadius: 10, padding: "10px 11px" }}>
       <div style={{ fontSize: 10, color: C.tx3, fontFamily: "monospace", marginBottom: 3 }}>{icon} {label}</div>
@@ -157,7 +140,7 @@ function KCard({ label, icon, value, unit, color, sub }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function StepCard({ title, rows }: { title: string; rows: [string, string, string?][] }) {
+function StepCard({ title, rows }) {
   return (
     <div style={{ background: C.bg2, border: `1px solid ${C.bd}`, borderRadius: 10, padding: 12 }}>
       <div style={{ fontSize: 9, fontWeight: 700, color: C.tx3, textTransform: "uppercase", letterSpacing: ".08em", fontFamily: "monospace", marginBottom: 8, paddingBottom: 5, borderBottom: `1px solid ${C.bd}` }}>
@@ -176,7 +159,7 @@ function StepCard({ title, rows }: { title: string; rows: [string, string, strin
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG TOP VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function TopView({ r }: { r: R }) {
+function TopView({ r }) {
   const VW = 700, PX = 52, PY = 46;
   const RW = VW - PX * 2;
   const RH = Math.min(Math.round(RW * r.inputs.roomL / r.inputs.roomW), 300);
@@ -190,15 +173,15 @@ function TopView({ r }: { r: R }) {
   const spx = rx + ox * scX, spy = ry + oy * scY;
   const swPx = r.inputs.stockW * scX, slPx = r.inputs.stockL * scY;
 
-  const wallColors: Record<WallSide, string> = { front: C.bl, back: C.pu, left: C.tl, right: C.am };
+  const wallColors = { front: C.bl, back: C.pu, left: C.tl, right: C.am };
 
   const fovRects = r.cameras.map((c, i) => {
     const cx = rx + c.x * scX, cy = ry + c.y * scY;
-    let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-    if (c.wall === "front")  { x1 = cx - fwPx/2; y1 = cy;          x2 = cx + fwPx/2; y2 = cy + flPx; }
-    if (c.wall === "back")   { x1 = cx - fwPx/2; y1 = cy - flPx;   x2 = cx + fwPx/2; y2 = cy; }
-    if (c.wall === "left")   { x1 = cx;           y1 = cy - fwPx/2; x2 = cx + flPx;   y2 = cy + fwPx/2; }
-    if (c.wall === "right")  { x1 = cx - flPx;    y1 = cy - fwPx/2; x2 = cx;          y2 = cy + fwPx/2; }
+    let x1, y1, x2, y2;
+    if (c.wall === "front")  { x1 = cx - fwPx/2; y1 = cy;        x2 = cx + fwPx/2; y2 = cy + flPx; }
+    if (c.wall === "back")   { x1 = cx - fwPx/2; y1 = cy - flPx; x2 = cx + fwPx/2; y2 = cy; }
+    if (c.wall === "left")   { x1 = cx;           y1 = cy - fwPx/2; x2 = cx + flPx; y2 = cy + fwPx/2; }
+    if (c.wall === "right")  { x1 = cx - flPx;    y1 = cy - fwPx/2; x2 = cx;        y2 = cy + fwPx/2; }
     x1 = Math.max(rx, x1); y1 = Math.max(ry, y1);
     x2 = Math.min(rx + RW, x2); y2 = Math.min(ry + RH, y2);
     const col = wallColors[c.wall];
@@ -270,7 +253,7 @@ function TopView({ r }: { r: R }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG SWEEP VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function SweepView({ r }: { r: R }) {
+function SweepView({ r }) {
   const CX = 172, CY = 192, RAD = 150;
   const { panUsed, inputs: { fovH } } = r;
   const st = 90 - panUsed / 2, en = 90 + panUsed / 2;
@@ -307,7 +290,7 @@ function SweepView({ r }: { r: R }) {
   const bc = qualColor(r.BZ);
   const oc = olColor(r.actOlPhoto, r.inputs.olPhoto);
 
-  const IRow = ({ y, label, val, vc }: { y: number; label: string; val: string | number; vc?: string }) => (
+  const IRow = ({ y, label, val, vc }) => (
     <>
       <text x={IX+11} y={y} fontSize={10} fontFamily="monospace" fill={C.tx2}>{label}</text>
       <text x={IX+IW-11} y={y} textAnchor="end" fontSize={10} fontFamily="monospace" fill={vc || C.tx} fontWeight={600}>{val}</text>
@@ -349,7 +332,7 @@ function SweepView({ r }: { r: R }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG SIDE VIEW
 // ─────────────────────────────────────────────────────────────────────────────
-function SideView({ r }: { r: R }) {
+function SideView({ r }) {
   const VW = 700, PL = 52, PT = 38, CH = 256;
   const { roomH, tilt, fovV, stockH } = r.inputs;
   const Z = r.Z, scY = CH / (Z * 1.15);
@@ -362,7 +345,7 @@ function SideView({ r }: { r: R }) {
   const IX = PL + VW - PL - 198 - 14, IW = 198;
   const bc = qualColor(r.BZ);
 
-  const IRow = ({ y, label, val, vc }: { y: number; label: string; val: string | number; vc?: string }) => (
+  const IRow = ({ y, label, val, vc }) => (
     <>
       <text x={IX+11} y={y} fontSize={10} fontFamily="monospace" fill={C.tx2}>{label}</text>
       <text x={IX+IW-11} y={y} textAnchor="end" fontSize={10} fontFamily="monospace" fill={vc || C.tx} fontWeight={600}>{val}</text>
@@ -401,54 +384,52 @@ function SideView({ r }: { r: R }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-export default function CctvPlanner() {
+export default function CCTVStockpilePlanner() {
   const SENSORS = [
-    { label: '1/4" 4.8×3.6mm 4MP (entry)',     sW: 4.8,  sH: 3.6, mp: 4,  fl: 4 },
-    { label: '1/3" 6.4×4.8mm 4MP (standard)',  sW: 6.4,  sH: 4.8, mp: 4,  fl: 6 },
-    { label: '1/2.8" 7.2×5.4mm 8MP (mid)',     sW: 7.2,  sH: 5.4, mp: 8,  fl: 6 },
-    { label: '1/2" 9.6×7.2mm 8MP (premium)',   sW: 9.6,  sH: 7.2, mp: 8,  fl: 8 },
-    { label: '1/1.8" 12.8×9.6mm 12MP (high)',  sW: 12.8, sH: 9.6, mp: 12, fl: 10 },
+    { label: '1/4" 4.8×3.6mm 4MP (entry)',     sW: 4.8, sH: 3.6, mp: 4,  fl: 4 },
+    { label: '1/3" 6.4×4.8mm 4MP (standard)',  sW: 6.4, sH: 4.8, mp: 4,  fl: 6 },
+    { label: '1/2.8" 7.2×5.4mm 8MP (mid)',     sW: 7.2, sH: 5.4, mp: 8,  fl: 6 },
+    { label: '1/2" 9.6×7.2mm 8MP (premium)',   sW: 9.6, sH: 7.2, mp: 8,  fl: 8 },
+    { label: '1/1.8" 12.8×9.6mm 12MP (high)',  sW: 12.8,sH: 9.6, mp: 12, fl: 10 },
   ];
 
-  const [si, setSi]           = useState(2);
-  const [roomL, setRoomL]     = useState(20);
-  const [roomW, setRoomW]     = useState(15);
-  const [roomH, setRoomH]     = useState(4);
-  const [stockL, setStockL]   = useState(8);
-  const [stockW, setStockW]   = useState(6);
-  const [stockH, setStockH]   = useState(2);
-  const [fovH, setFovH]       = useState(90);
-  const [fovV, setFovV]       = useState(60);
+  const [si, setSi]     = useState(2);   // sensor index
+  const [roomL, setRoomL] = useState(20);
+  const [roomW, setRoomW] = useState(15);
+  const [roomH, setRoomH] = useState(4);
+  const [stockL, setStockL] = useState(8);
+  const [stockW, setStockW] = useState(6);
+  const [stockH, setStockH] = useState(2);
+  const [fovH, setFovH] = useState(90);
+  const [fovV, setFovV] = useState(60);
   const [focalLen, setFocalLen] = useState(6);
-  const [tilt, setTilt]       = useState(40);
-  const [panEff, setPanEff]   = useState(150);
+  const [tilt, setTilt] = useState(40);
+  const [panEff, setPanEff] = useState(150);
   const [olPhoto, setOlPhoto] = useState(80);
-  const [olCam, setOlCam]     = useState(60);
-  const [baseB, setBaseB]     = useState(6);
+  const [olCam, setOlCam] = useState(60);
+  const [baseB, setBaseB] = useState(6);
   const [activeTab, setActiveTab] = useState("top");
 
   const sens = SENSORS[si];
   const r = compute({
-    roomL, roomW, roomH, stockL, stockW, stockH,
+    roomL, roomW, roomH, stockL, stockW, stockH: stockH,
     fovH, fovV, tilt,
     sensorW: sens.sW, sensorH: sens.sH, focalLen, megapix: sens.mp,
     panEff, olPhoto, olCam, baseB,
   });
 
-  const isOk    = r.actOlPhoto >= olPhoto && r.BZ >= 0.10 && r.minOlCam >= olCam;
+  const isOk   = r.actOlPhoto >= olPhoto && r.BZ >= 0.10 && r.minOlCam >= olCam;
   const isIdeal = r.BZ >= 0.20 && isOk;
 
-  const bannerStyle: React.CSSProperties = {
+  const bannerStyle = {
     borderRadius: 6, padding: "8px 12px", fontSize: 11, border: "1px solid",
     fontFamily: "monospace", letterSpacing: ".01em", marginBottom: 12,
-    ...(isIdeal
-      ? { background: `${C.gn}0f`, borderColor: `${C.gn}44`, color: C.gn }
-      : isOk
-        ? { background: `${C.am}0f`, borderColor: `${C.am}44`, color: C.am }
-        : { background: `${C.rd}0f`, borderColor: `${C.rd}44`, color: C.rd }),
+    ...(isIdeal ? { background: `${C.gn}0f`, borderColor: `${C.gn}44`, color: C.gn }
+      : isOk    ? { background: `${C.am}0f`, borderColor: `${C.am}44`, color: C.am }
+               : { background: `${C.rd}0f`, borderColor: `${C.rd}44`, color: C.rd }),
   };
 
-  const tabStyle = (t: string): React.CSSProperties => ({
+  const tabStyle = (t) => ({
     background: activeTab === t ? C.bl2 : C.bg3,
     border: `1px solid ${activeTab === t ? C.bl2 : C.bd}`,
     borderRadius: 5, padding: "3px 10px", fontSize: 10,
@@ -456,10 +437,10 @@ export default function CctvPlanner() {
     fontFamily: "monospace", transition: "all .15s",
   });
 
-  const wallBadge: Record<WallSide, string> = { front: C.bl, back: C.pu, left: C.tl, right: C.am };
+  const wallBadge = { front: C.bl, back: C.pu, left: C.tl, right: C.am };
 
   return (
-    <div style={{ background: C.bg, color: C.tx, fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: "100vh", fontSize: 13, margin: "-2rem" }}>
+    <div style={{ background: C.bg, color: C.tx, fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: "100vh", fontSize: 13 }}>
 
       {/* ── Header ── */}
       <div style={{ background: C.bg2, borderBottom: `1px solid ${C.bd}`, padding: "11px 20px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -604,7 +585,7 @@ export default function CctvPlanner() {
                   const cx2 = (r.inputs.roomW - r.inputs.stockW)/2 + r.inputs.stockW/2;
                   const cy2 = (r.inputs.roomL - r.inputs.stockL)/2 + r.inputs.stockL/2;
                   const dist = Math.hypot(cx2 - c.x, cy2 - c.y).toFixed(1);
-                  const dir: Record<WallSide, string> = { front: "↑ ke dalam", back: "↓ ke dalam", left: "→ ke kanan", right: "← ke kiri" };
+                  const dir = { front: "↑ ke dalam", back: "↓ ke dalam", left: "→ ke kanan", right: "← ke kiri" };
                   return (
                     <tr key={c.id} style={{ borderBottom: `1px solid ${C.bd}` }}>
                       <td style={{ padding: "4px 8px", color: C.tx }}>{c.id}</td>
@@ -629,8 +610,8 @@ export default function CctvPlanner() {
   );
 }
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// ── Section wrapper ──────────────────────────────────────────────────────────
+function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 9, fontWeight: 700, color: "#3d4260", textTransform: "uppercase", letterSpacing: ".1em", fontFamily: "monospace", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid #1e2235" }}>
