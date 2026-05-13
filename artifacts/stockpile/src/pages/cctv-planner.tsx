@@ -12,7 +12,7 @@ import { useState } from "react";
 //   stride  = sweepW × (1 − OL_cam%)            langkah efektif antar kamera
 //   nCamL   = ⌈stockL / stride⌉                 kamera per sisi panjang
 //   nCamW   = ⌈stockW / stride⌉                 kamera per sisi lebar
-//   total   = 2·nCamL + 2·nCamW − 4            total kamera (sudut shared)
+//   total   = 2·nCamL + 2·nCamW                total kamera
 //   B/Z     = baseline / d                      stereo quality ratio
 //   GSD     = (pixPitch/f) × d × 1000          mm/px
 //   σZ      = d²·pixPitch / (f·B) × 1000       akurasi Z (mm)
@@ -55,7 +55,7 @@ function compute(p: ComputeParams) {
   const nCamW   = Math.max(2, Math.ceil(stockW / stride));
   const spacL   = nCamL > 1 ? stockL / (nCamL - 1) : stockL;
   const spacW   = nCamW > 1 ? stockW / (nCamW - 1) : stockW;
-  const totCams = 2 * nCamL + 2 * nCamW - 4;
+  const totCams = 2 * nCamL + 2 * nCamW;
   const actOlCamL = Math.round(((sweepW - spacL) / sweepW) * 100);
   const actOlCamW = Math.round(((sweepW - spacW) / sweepW) * 100);
   const minOlCam  = Math.min(actOlCamL, actOlCamW);
@@ -574,7 +574,7 @@ export default function CctvPlanner() {
               ["stride = sweepW×(1−OL_cam)", `${r.sweepW}×${(1-olCam/100).toFixed(2)} = ${r.stride} m`],
               ["nCamL = ⌈stockL/stride⌉", `⌈${stockL}/${r.stride}⌉ = ${r.nCamL} / sisi panjang`],
               ["nCamW = ⌈stockW/stride⌉", `⌈${stockW}/${r.stride}⌉ = ${r.nCamW} / sisi lebar`],
-              ["Total = 2·nL+2·nW−4", `2·${r.nCamL}+2·${r.nCamW}−4 = ${r.totCams} kamera`],
+              ["Total = 2·nL+2·nW", `2·${r.nCamL}+2·${r.nCamW} = ${r.totCams} kamera`],
               ["Jarak sisi L = stockL/(nL−1)", `${r.spacL} m`],
               ["Jarak sisi W = stockW/(nW−1)", `${r.spacW} m`],
             ]}/>
