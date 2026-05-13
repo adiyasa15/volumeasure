@@ -28,6 +28,7 @@ type ComputeParams = {
   fovH: number; fovV: number; tilt: number;
   sensorW: number; sensorH: number; focalLen: number; megapix: number;
   panEff: number; olPhoto: number; olCam: number; baseB: number;
+  manualTotCams?: number; // if set (≥8), override auto layout; cameras stay on walls
 };
 
 function compute(p: ComputeParams) {
@@ -49,10 +50,21 @@ function compute(p: ComputeParams) {
   const actOlPhoto = Math.round((1 - actStep / fovH) * 100);
   const wrong360   = Math.ceil(360 / maxStep);
 
-  // Step 3 — Camera layout (wall-mounted perimeter only)
-  const stride  = sweepW * (1 - olCam / 100);
-  const nCamL   = Math.max(2, Math.ceil(stockL / stride));
-  const nCamW   = Math.max(2, Math.ceil(stockW / stride));
+  // Step 3 — Camera layout (wall-mounted perimeter only, never inside stockpile)
+  const stride = sweepW * (1 - olCam / 100);
+  let nCamL: number, nCamW: number;
+  const isManual = typeof p.manualTotCams === "number" && p.manualTotCams >= 8;
+  if (isManual) {
+    // Optimal split: minimize max(spacL, spacW) ↔ equalize coverage per metre
+    // Derived by setting stockL/(nCamL-1) = stockW/(nCamW-1) with nCamL+nCamW = halfN
+    const halfN    = Math.max(4, Math.floor(p.manualTotCams! / 2));
+    const rawNcamL = (stockL * (halfN - 1) + stockW) / (stockL + stockW);
+    nCamL = Math.max(2, Math.min(halfN - 2, Math.round(rawNcamL)));
+    nCamW = Math.max(2, halfN - nCamL);
+  } else {
+    nCamL = Math.max(2, Math.ceil(stockL / stride));
+    nCamW = Math.max(2, Math.ceil(stockW / stride));
+  }
   const spacL   = nCamL > 1 ? stockL / (nCamL - 1) : stockL;
   const spacW   = nCamW > 1 ? stockW / (nCamW - 1) : stockW;
   const totCams = 2 * nCamL + 2 * nCamW;
@@ -101,6 +113,7 @@ function compute(p: ComputeParams) {
     totPhotos, volErr, bzQual, cameras: cams, inputs: p,
     clearL: rnd(clearL), clearW: rnd(clearW),
     dimOk: stockL < roomL && stockW < roomW,
+    isManual,
   };
 }
 
@@ -431,6 +444,8 @@ export default function CctvPlanner() {
   const [olCam, setOlCam]     = useState(60);
   const [baseB, setBaseB]     = useState(6);
   const [activeTab, setActiveTab] = useState("top");
+  const [manualMode, setManualMode] = useState(false);
+  const [manualCams, setManualCams] = useState(12);
 
   // Auto-clamp stock when room shrinks below it
   const handleRoomL = (v: number) => {
@@ -448,6 +463,7 @@ export default function CctvPlanner() {
     fovH, fovV, tilt,
     sensorW: sens.sW, sensorH: sens.sH, focalLen, megapix: sens.mp,
     panEff, olPhoto, olCam, baseB,
+    manualTotCams: manualMode ? manualCams : undefined,
   });
 
   // Dimension validation
@@ -548,6 +564,45 @@ export default function CctvPlanner() {
             <Field label="Target overlap kamera" min={30} max={70} value={olCam} step={5} unit="%" onChange={setOlCam}/>
             <Field label="Baseline B antar kamera" min={1} max={20} value={baseB} step={0.5} unit=" m" onChange={setBaseB}/>
           </Section>
+
+          <Section title="Jumlah Kamera">
+            {/* Mode toggle */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+              {[["Auto","auto"],["Manual","manual"]].map(([label, val]) => {
+                const active = manualMode ? val === "manual" : val === "auto";
+                return (
+                  <button key={val} onClick={() => setManualMode(val === "manual")}
+                    style={{ flex: 1, background: active ? C.bl : C.bg3, color: active ? "#fff" : C.tx2,
+                      border: `1px solid ${active ? C.bl : C.bd2}`, borderRadius: 5,
+                      padding: "5px 0", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "monospace" }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {manualMode ? (
+              <>
+                <Field label="Total kamera" min={8} max={60} value={manualCams} step={2} unit=" kamera" onChange={setManualCams}/>
+                <div style={{ fontSize: 10, color: C.tx3, fontFamily: "monospace", marginTop: 6, lineHeight: 1.6 }}>
+                  Distribusi optimal:<br/>
+                  <span style={{ color: C.bl, fontWeight: 700 }}>{r.nCamL}</span> kamera/sisi L (panjang) ×2<br/>
+                  <span style={{ color: C.tl, fontWeight: 700 }}>{r.nCamW}</span> kamera/sisi W (lebar) ×2<br/>
+                  <span style={{ color: C.tx2 }}>= {r.totCams} unit total</span>
+                </div>
+                <div style={{ fontSize: 9, color: "#3d4260", fontFamily: "monospace", marginTop: 5, background: C.bg3, border: `1px solid ${C.bd}`, borderRadius: 4, padding: "4px 7px" }}>
+                  Semua kamera di dinding — tidak ada kamera di atas stockpile.
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 10, color: C.tx3, fontFamily: "monospace", lineHeight: 1.6 }}>
+                Dihitung dari target OL kamera:<br/>
+                <span style={{ color: C.bl, fontWeight: 700 }}>{r.nCamL}</span>/sisi L ·{" "}
+                <span style={{ color: C.tl, fontWeight: 700 }}>{r.nCamW}</span>/sisi W ·{" "}
+                <span style={{ color: C.tx2, fontWeight: 700 }}>total {r.totCams} kamera</span>
+              </div>
+            )}
+          </Section>
         </div>
 
         {/* ── Main Content ── */}
@@ -628,13 +683,24 @@ export default function CctvPlanner() {
               ["⚠ 360° SALAH!", `${r.wrong360} foto — tidak perlu!`, C.rd],
               [`✓ ${r.panUsed}° BENAR`, `${r.nFrames} foto — hemat ${r.wrong360 - r.nFrames} frame`, C.gn],
             ]}/>
-            <StepCard title="STEP 3 — Jumlah & Jarak Kamera" rows={[
+            <StepCard title="STEP 3 — Jumlah & Jarak Kamera" rows={r.isManual ? [
+              ["Mode", "Manual — jumlah kamera ditentukan pengguna"],
+              ["Input total kamera", `${manualCams} unit`],
+              ["halfN = total/2", `${manualCams}/2 = ${manualCams/2} (nL+nW)`],
+              ["nCamL optimal = (Ls·(N−1)+Ws)/(Ls+Ws)", `${r.nCamL} / sisi panjang`],
+              ["nCamW = halfN − nCamL", `${r.nCamW} / sisi lebar`],
+              ["Total aktual = 2·nL+2·nW", `2·${r.nCamL}+2·${r.nCamW} = ${r.totCams} kamera`],
+              ["Jarak sisi L = Ls/(nL−1)", `${r.spacL} m`],
+              ["Jarak sisi W = Ws/(nW−1)", `${r.spacW} m`],
+              ["⚠ Semua kamera di dinding!", "tidak ada di atas stockpile", C.bl],
+            ] : [
               ["stride = sweepW×(1−OL_cam)", `${r.sweepW}×${(1-olCam/100).toFixed(2)} = ${r.stride} m`],
               ["nCamL = ⌈stockL/stride⌉", `⌈${stockL}/${r.stride}⌉ = ${r.nCamL} / sisi panjang`],
               ["nCamW = ⌈stockW/stride⌉", `⌈${stockW}/${r.stride}⌉ = ${r.nCamW} / sisi lebar`],
               ["Total = 2·nL+2·nW", `2·${r.nCamL}+2·${r.nCamW} = ${r.totCams} kamera`],
               ["Jarak sisi L = stockL/(nL−1)", `${r.spacL} m`],
               ["Jarak sisi W = stockW/(nW−1)", `${r.spacW} m`],
+              ["⚠ Semua kamera di dinding!", "tidak ada di atas stockpile", C.bl],
             ]}/>
             <StepCard title="STEP 4 — B/Z Ratio & Akurasi Stereo" rows={[
               ["pixelPitch = sensorW/pxW", `${r.pp} mm`],
